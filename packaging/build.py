@@ -295,13 +295,14 @@ def main():
     if a.what == "release":
         import release
         try:
-            out, feed, files = release.release(ROOT, DIST, a.url_base, a.previous)
+            out, feed, files, new_names = release.release(ROOT, DIST, a.url_base, a.previous)
         except release.ReleaseError as e:
             sys.exit("Release not written:\n  " + "\n  ".join(e.problems))
         step(f"Release written to {out} (nothing published)")
         for name, e in [("Hub", feed["hub"])] + sorted(feed["drivers"].items()):
-            new = any(os.path.basename(f) == e["file"] for f in files)
+            new = f"{name} {e['version']}" in new_names
             print(f"  {name:12s} {e['version']:8s} {'NEW' if new else 'unchanged'}")
+        print(f"  {len(files)} installers attached; NOTES.md is the release page's text")
         return
     iscc = find_iscc()
     common_files()

@@ -169,9 +169,12 @@ python packaging/build.py release --url-base https://<where the installers go> -
 ```
 
 It writes `dist/release/`: `releases.json` (the list the hub's update check will read: each version, its download
-address, SHA-256, size and notes from CHANGES.md), `CHANGES.md`, and only the installers that are new. Versions
-already in the previous list keep their entry. It refuses a new version without its installer or a CHANGES.md entry.
-Nothing is published: uploading the folder is a separate step ([UPDATES-PLAN.md](UPDATES-PLAN.md)).
+address, SHA-256, size and notes from CHANGES.md), `CHANGES.md`, `NOTES.md` (the release page's text: what to
+download for which device, then what's new) and **every current installer**, so each release, and so the latest
+one, has everything a new user needs. Versions already in the previous list keep their date and notes, and their
+installer in `dist/` must be the published file. It refuses a new version without its installer or a CHANGES.md
+entry. Nothing is published: `gh release create <tag> --notes-file dist/release/NOTES.md` with the other files is a
+separate step ([UPDATES-PLAN.md](UPDATES-PLAN.md)).
 
 ## Adding a device
 

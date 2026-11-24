@@ -39,7 +39,7 @@ class ChangesTest(unittest.TestCase):
     def test_parse(self):
         c = release.parse_changes(CHANGES)
         self.assertEqual(c[("hub", "0.4.0")], "- Hub thing.")
-        self.assertEqual(c[("optec", "1.1.0")], "- Optec thing.\n  Second line.")
+        self.assertEqual(c[("optec", "1.1.0")], "- Optec thing. Second line.", "a wrapped bullet is one line")
         self.assertEqual(set(c), {("hub", "0.4.0"), ("optec", "1.1.0"), ("wcover", "1.0.3")})
 
     def test_this_repositorys_changes_cover_its_versions(self):
@@ -68,7 +68,8 @@ class FeedTest(unittest.TestCase):
 
     def test_first_release_lists_everything(self):
         self.all_exes()
-        feed, files = release.make_feed(HUB, DRIVERS, self.dist, self.changes, URL, today="2026-12-01")
+        feed, files, new = release.make_feed(HUB, DRIVERS, self.dist, self.changes, URL, today="2026-12-01")
+        self.assertEqual(new, ["Hub 0.4.0", "optec 1.1.0", "wcover 1.0.3"])
         self.assertEqual(feed["feed"], 1)
         h = feed["hub"]
         self.assertEqual((h["version"], h["api"], h["date"], h["notes"]), ("0.4.0", 1, "2026-12-01", "- Hub thing."))
@@ -80,26 +81,50 @@ class FeedTest(unittest.TestCase):
         self.assertNotIn("min_hub", feed["drivers"]["wcover"])
         self.assertEqual(len(files), 3)
 
-    def test_unchanged_versions_keep_their_entry_and_are_not_published_again(self):
+    def test_every_release_carries_every_current_installer(self):
         self.all_exes()
-        prev, _ = release.make_feed(HUB, DRIVERS, self.dist, self.changes, URL, today="2026-12-01")
+        prev, _, _ = release.make_feed(HUB, DRIVERS, self.dist, self.changes, URL, today="2026-12-01")
         drivers = dict(DRIVERS, optec=dict(DRIVERS["optec"], version="1.2.0"))
         self.exe("AlpacaHub-optec-1.2.0-Setup.exe", b"optec2")
         changes = {**self.changes, ("optec", "1.2.0"): "- Newer."}
-        feed, files = release.make_feed(HUB, drivers, self.dist, changes, "https://example.org/dl/r3", prev,
-                                        today="2026-12-05")
-        self.assertEqual([os.path.basename(f) for f in files], ["AlpacaHub-optec-1.2.0-Setup.exe"])
-        self.assertEqual(feed["hub"], prev["hub"])
-        self.assertEqual(feed["drivers"]["wcover"], prev["drivers"]["wcover"])
-        self.assertEqual(feed["drivers"]["optec"]["url"], "https://example.org/dl/r3/AlpacaHub-optec-1.2.0-Setup.exe")
+        r3 = "https://example.org/dl/r3"
+        feed, files, new = release.make_feed(HUB, drivers, self.dist, changes, r3, prev, today="2026-12-05")
+        self.assertEqual(new, ["optec 1.2.0"])
+        self.assertEqual(sorted(os.path.basename(f) for f in files),
+                         ["AlpacaHub-0.4.0-Setup.exe", "AlpacaHub-optec-1.2.0-Setup.exe", "AlpacaHub-wcover-1.0.3-Setup.exe"])
+        for e in [feed["hub"]] + list(feed["drivers"].values()):
+            self.assertTrue(e["url"].startswith(r3 + "/"), e["url"])          # all from this release
+        self.assertEqual({k: feed["hub"][k] for k in ("version", "date", "notes", "sha256")},
+                         {k: prev["hub"][k] for k in ("version", "date", "notes", "sha256")}, "unchanged: same entry")
         self.assertEqual(feed["drivers"]["optec"]["date"], "2026-12-05")
+        self.assertEqual(feed["drivers"]["optec"]["notes"], "- Newer.")
+        notes = release.release_notes(feed, new)
+        self.assertIn("[AlpacaHub-0.4.0-Setup.exe](https://example.org/dl/r3/AlpacaHub-0.4.0-Setup.exe)", notes)
+        self.assertIn("| Cover | [AlpacaHub-wcover-1.0.3-Setup.exe]", notes)
+        self.assertIn("**Optec 1.2.0**", notes)
+        self.assertNotIn("**Cover", notes, "only what's new is listed under What's new")
+
+    def test_an_unchanged_version_must_be_the_published_file(self):
+        self.all_exes()
+        prev, _, _ = release.make_feed(HUB, DRIVERS, self.dist, self.changes, URL)
+        self.exe("AlpacaHub-wcover-1.0.3-Setup.exe", b"wcover rebuilt")             # same version, other bytes
+        os.remove(os.path.join(self.dist, "AlpacaHub-0.4.0-Setup.exe"))             # not here at all
+        drivers = dict(DRIVERS, optec=dict(DRIVERS["optec"], version="1.2.0"))
+        self.exe("AlpacaHub-optec-1.2.0-Setup.exe", b"optec2")
+        with self.assertRaises(release.ReleaseError) as e:
+            release.make_feed(HUB, drivers, self.dist, {**self.changes, ("optec", "1.2.0"): "- x"}, URL, prev)
+        text = str(e.exception)
+        self.assertIn("wcover 1.0.3: AlpacaHub-wcover-1.0.3-Setup.exe in", text)
+        self.assertIn("isn't the published file", text)
+        self.assertIn("Hub 0.4.0: AlpacaHub-0.4.0-Setup.exe isn't in", text)
+        self.assertIn("download the published one", text)
 
     def test_a_driver_no_longer_here_stays_listed(self):
         self.all_exes()
-        prev, _ = release.make_feed(HUB, DRIVERS, self.dist, self.changes, URL)
+        prev, _, _ = release.make_feed(HUB, DRIVERS, self.dist, self.changes, URL)
         hub = {"version": "0.5.0", "api": 1}
         self.exe("AlpacaHub-0.5.0-Setup.exe", b"hub5")
-        feed, _ = release.make_feed(hub, {"optec": DRIVERS["optec"]}, self.dist,
+        feed, _, _ = release.make_feed(hub, {"optec": DRIVERS["optec"]}, self.dist,
                                     {**self.changes, ("hub", "0.5.0"): "- x"}, URL, prev)
         self.assertIn("wcover", feed["drivers"])
 
@@ -119,7 +144,7 @@ class FeedTest(unittest.TestCase):
 
     def test_nothing_new_and_going_backwards(self):
         self.all_exes()
-        prev, _ = release.make_feed(HUB, DRIVERS, self.dist, self.changes, URL)
+        prev, _, _ = release.make_feed(HUB, DRIVERS, self.dist, self.changes, URL)
         with self.assertRaises(release.ReleaseError) as e:
             release.make_feed(HUB, DRIVERS, self.dist, self.changes, URL, prev)
         self.assertIn("nothing new", str(e.exception))
@@ -138,9 +163,9 @@ class FeedTest(unittest.TestCase):
             f.write(CHANGES.replace("Hub 0.4.0", f"Hub {VERSION}"))
         self.exe(f"AlpacaHub-{VERSION}-Setup.exe", b"hub")
         self.exe("AlpacaHub-optec-1.1.0-Setup.exe", b"optec")
-        out, feed, files = release.release(root, self.dist, URL)
-        self.assertEqual(sorted(os.listdir(out)), sorted(["releases.json", "CHANGES.md", f"AlpacaHub-{VERSION}-Setup.exe",
-                                                          "AlpacaHub-optec-1.1.0-Setup.exe"]))
+        out, feed, files, new = release.release(root, self.dist, URL)
+        self.assertEqual(sorted(os.listdir(out)), sorted(["releases.json", "CHANGES.md", "NOTES.md",
+                                                          f"AlpacaHub-{VERSION}-Setup.exe", "AlpacaHub-optec-1.1.0-Setup.exe"]))
         with open(os.path.join(out, "releases.json"), encoding="utf-8") as f:
             self.assertEqual(json.load(f), feed)
 
