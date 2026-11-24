@@ -47,7 +47,7 @@
 <div class="cgrp"><h3>Range</h3>
 <label title="Focuser MaxStep in Alpaca. Moves past it are refused. The NiteCrawler's own limit switches still protect the drawtube">Focus maximum <span class="nu"><input name="focus_max" type="number" step="1" min="1" inputmode="numeric"><i class="u">steps</i></span></label>
 <label title="0 = off (let the imaging program do backlash). Otherwise every inward move overshoots by this many steps and comes back out, so moves always finish going outward">Focus backlash <span class="nu"><input name="focus_backlash" type="number" step="1" min="0" inputmode="numeric"><i class="u">steps</i></span></label>
-<div class="crow pref" title="Serve the aux motor as Alpaca Focuser #1. Reconnect in the Alpaca program to see it"><label for="mAux">Aux motor as Focuser #1</label><input type="checkbox" id="mAux"></div>
+<div class="crow pref" title="Serve the aux motor as a second Alpaca focuser (its number is under ASCOM Alpaca). Reconnect in the Alpaca program to see it"><label for="mAux">Aux motor as a second focuser</label><input type="checkbox" id="mAux"></div>
 <label>Aux maximum <span class="nu"><input name="aux_max" type="number" step="1" min="1" inputmode="numeric"><i class="u">steps</i></span></label>
 <label title="0 = off. Same as focus backlash, for the aux motor">Aux backlash <span class="nu"><input name="aux_backlash" type="number" step="1" min="0" inputmode="numeric"><i class="u">steps</i></span></label>
 <div class="crow pref" title="Rotator Reverse in Alpaca: angles count the other way. The sky angle stays where it is"><label for="mRev">Rotator reversed</label><input type="checkbox" id="mRev"></div></div>

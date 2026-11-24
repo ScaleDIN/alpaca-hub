@@ -107,6 +107,31 @@ class OptecInTheHub(unittest.TestCase):
         for dev in ("COM4", "COM6"):
             self.assertFalse(any(v in ("SCDT", "SETMAX", "SCTE", "SETDEV", "SETTCE") for _, v, _ in self.bench.sims[dev].log))
 
+    def test_page_finds_its_hub_numbers(self):
+        """The page labels each axis with the hub's Alpaca number: it finds the axis in hub.json's "alpaca" rows by
+        its slug, type and name (device.js alpacaName). Every axis must be there, with the hub's numbers, not the
+        driver's own 0."""
+        self.bench.add("COM8", SimNiteCrawler(serial="31", speed=50), OPTEC_FTDI, "FT31")
+        self.bench.add("COM4", SimLynx(dev_types=("FA", "FB")), THIRDLYNX, "TL1")
+        self.bench.add("COM6", SimGemini(serial="501"), OPTEC_FTDI)
+        h = self.new_hub()
+        h.scan_once()
+        rows = json.loads(urllib.request.urlopen(f"http://127.0.0.1:{h.port}/hub.json").read())["alpaca"]
+        found = {}
+        for inst in h.instances.values():
+            if inst.driver.key not in ("gemini", "focuslynx"):
+                continue
+            for a in inst.axes_status():
+                n = [r["number"] for r in rows if r["slug"] == inst.slug and r["type"] == a["kind"] and r["name"] == a["name"]]
+                self.assertEqual(len(n), 1, f"{inst.slug} {a['kind']} {a['name']!r} in {rows}")
+                found[(inst.driver.key, a["kind"], a["id"])] = n[0]
+        focusers = sorted(v for (k, kind, _), v in found.items() if kind == "focuser")
+        self.assertEqual(len(focusers), 3, found)                  # two ThirdLynx, one Gemini
+        self.assertEqual(len(set(focusers)), 3, "each its own number")
+        nc = [r["number"] for r in rows if r["type"] == "focuser" and r["slug"].startswith("nitecrawler")]
+        self.assertEqual(len(nc), 1)
+        self.assertNotIn(nc[0], focusers, "the NiteCrawler's focuser number isn't one of the Optec ones")
+
     def test_focuser_through_alpaca(self):
         sim = SimLynx(speed=5000)
         self.bench.add("COM4", sim, THIRDLYNX)

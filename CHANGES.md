@@ -4,6 +4,14 @@ What changed in each release of the Alpaca Hub and its drivers. Newest first. Ea
 `## <Hub | driver key> <version> (<date>)`: `packaging/build.py release` takes each new version's notes from here
 for the hub's update check, and refuses a release whose new versions have no entry.
 
+## nitecrawler 1.0.3 (2026-11-24)
+- The page names the focuser, rotator and aux motor by the numbers your imaging program sees (Focuser #2 …), not
+  always #0 and #1.
+
+## optec 1.0.3 (2026-11-24)
+- The page's Hub card names each focuser and rotator by the number your imaging program sees (Focuser #1 …), not
+  the driver's own 0.
+
 ## Hub 0.3.1 (2026-11-24)
 - The hub looks for new versions online once a day and shows them on the Overview, with what's new. It sends nothing
   but its own version number; the Overview's Updates setting turns it off (then it sends nothing at all).

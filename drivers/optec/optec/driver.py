@@ -427,7 +427,7 @@ class FocusLynxInstance(_OptecInstance):
             ch = dev.axis.key
             st = self.unit.snapshot(ch)
             cfg = self.unit.config.get(ch)
-            out.append({"id": ch, "kind": "focuser", "name": dev.name, "alpaca": f"Focuser {dev.number}",
+            out.append({"id": ch, "kind": "focuser", "name": dev.name, "alpaca": "Focuser",
                         "configured": self.unit.configured(ch), "dev_type": cfg.dev_type if cfg else None,
                         "position": st.position if st else None, "target": st.target if st else None,
                         "moving": self.unit.is_moving(ch), "homing": st.homing if st else None,
@@ -520,13 +520,13 @@ class GeminiInstance(_OptecInstance):
 
     def axes_status(self):
         f, r = self.unit.focus, self.unit.rotator
-        out = [{"id": "F", "kind": "focuser", "name": self.focuser.name, "alpaca": "Focuser 0", "configured": True,
+        out = [{"id": "F", "kind": "focuser", "name": self.focuser.name, "alpaca": "Focuser", "configured": True,
                 "position": f.position if f else None, "target": f.target if f else None,
                 "moving": self.unit.is_moving("F"), "homing": f.homing if f else None,
                 "homed": f.homed if f else None, "max": self.unit.focus_max() or None,
                 "temperature": f.temperature if f else None, "unit": "steps",
                 "settings": _settings(self.unit.focus_cfg, GEMINI_FOCUS_SETTINGS)}]
-        rot = {"id": "R", "kind": "rotator", "name": self.rotator.name, "alpaca": "Rotator 0", "configured": True,
+        rot = {"id": "R", "kind": "rotator", "name": self.rotator.name, "alpaca": "Rotator", "configured": True,
                "moving": self.unit.is_moving("R"), "homing": r.homing if r else None,
                "homed": r.homed if r else None, "reverse": self.unit.rotator_reverse(),
                "sky_offset": round(self.rot_settings.sky_offset, 3), "unit": "°",

@@ -9,9 +9,29 @@ const steps = (n) => (n == null ? '—' : Number(n).toLocaleString('en-US').repl
 const deg = (v) => (v == null ? '—' : f(v, 2, '°'));
 const moving = (b) => (b ? '<span class="warn">moving</span>' : 'still');
 
+// The hub's Alpaca numbers for this NiteCrawler's devices (Focuser #2 …): the hub counts across every device, so they
+// aren't always 0 and 1. They come from the hub's hub.json ("alpaca": type, number, name, slug), read every 30 s;
+// until then, or without a hub, a label has no number.
+let nums = null, numsAt = 0;
+const mySlug = location.pathname.split('/').filter(Boolean)[0] || '';
+async function hubNumbers() {
+  if (Date.now() - numsAt < 30000) return;
+  numsAt = Date.now();
+  try {
+    const h = await K.getJSON('../hub.json');
+    nums = {};
+    for (const r of h.alpaca || []) if (r.slug == mySlug) nums[r.type + '|' + r.name] = r.number;
+  } catch (e) {}
+}
+const alpacaName = (type, name) => {
+  const n = nums ? nums[type + '|' + name] : null, t = type[0].toUpperCase() + type.slice(1);
+  return n == null ? t : `${t} #${n}`;
+};
+
 // ---------------------------------------------------------------- live status
 async function tick() {
   let s;
+  hubNumbers();
   try { s = await K.getJSON('status.json'); }
   catch (e) { $('sub').textContent = 'connection lost'; K.pill('link', 'service not running', 'bad'); K.pill('client', '…'); return; }
   last = s;
@@ -28,8 +48,9 @@ async function tick() {
   phone(s);
   ncTable(s);
   $('aNote').textContent = `Port ${s.http_port}. Alpaca has no login: anyone on this network can move the motors. Settings: ${s.settings_file}`;
-  $('devt').innerHTML = row('Focuser #0', esc(s.device_name + ' focuser') + ' — focus motor') + row('Rotator #0', esc(s.device_name + ' rotator')) +
-    (s.settings.aux_enabled ? row('Focuser #1', esc(s.device_name + ' aux') + ' — aux motor') : '');
+  $('devt').innerHTML = row(alpacaName('focuser', s.device_name + ' focuser'), esc(s.device_name + ' focuser') + ' — focus motor')
+    + row(alpacaName('rotator', s.device_name + ' rotator'), esc(s.device_name + ' rotator'))
+    + (s.settings.aux_enabled ? row(alpacaName('focuser', s.device_name + ' aux'), esc(s.device_name + ' aux') + ' — aux motor') : '');
 
   if (!s.up || !s.focus) {
     $('tiles').innerHTML = K.tile('NiteCrawler', '<span class="bad">no link</span>', esc(s.error || 'no answer on the serial port'));
@@ -91,7 +112,7 @@ function ctl(s) {
     : unlocked ? 'Unlocked while an Alpaca program is connected.' : 'An Alpaca program is connected. Move things there, or unlock.';
   $('cUnlock').textContent = unlocked ? 'Lock' : 'Unlock';
   $('cUnlock').style.visibility = s.client ? '' : 'hidden';
-  $('auxNote').textContent = up ? `at ${steps(s.aux.position)}${s.settings.aux_enabled ? ' · also Focuser #1 in Alpaca' : ''}` : '';
+  $('auxNote').textContent = up ? `at ${steps(s.aux.position)}${s.settings.aux_enabled ? ' · also ' + alpacaName('focuser', s.device_name + ' aux') + ' in Alpaca' : ''}` : '';
   if (up) {
     ED.focus.fill({ v: s.focus.target != null ? s.focus.target : s.focus.position });
     ED.rotator.fill({ v: (s.rotator.target != null ? s.rotator.target : s.rotator.sky).toFixed(2) });

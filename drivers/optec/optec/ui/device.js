@@ -11,9 +11,29 @@ const temp = (v) => (v == null ? '—' : f(v, 1, ' °C'));
 const state = (a) => (a.kind == 'focuser' && !a.configured ? ['no type set', 'warn'] : a.homing ? ['homing', 'warn'] : a.moving ? ['moving', 'warn']
   : a.homed === false && a.kind == 'rotator' ? ['not homed', 'warn'] : ['idle', '']);
 
+// The hub's Alpaca numbers for this device's axes (Focuser #1 …): this driver's own server numbers them from 0, the
+// hub counts across every device. They come from the hub's hub.json ("alpaca": type, number, name, slug), read every
+// 30 s; until then, or without a hub, a label has no number.
+let nums = null, numsAt = 0;
+const mySlug = location.pathname.split('/').filter(Boolean)[0] || '';
+async function hubNumbers() {
+  if (Date.now() - numsAt < 30000) return;
+  numsAt = Date.now();
+  try {
+    const h = await K.getJSON('../hub.json');
+    nums = {};
+    for (const r of h.alpaca || []) if (r.slug == mySlug) nums[r.type + '|' + r.name] = r.number;
+  } catch (e) {}
+}
+const alpacaName = (a) => {
+  const t = a.kind == 'rotator' ? 'Rotator' : 'Focuser', n = nums ? nums[a.kind + '|' + a.name] : null;
+  return n == null ? t : `${t} #${n}`;
+};
+
 // ---------------------------------------------------------------- live status
 async function tick() {
   let s;
+  hubNumbers();
   try { s = await K.getJSON('status.json'); }
   catch (e) { $('sub').textContent = 'connection lost'; K.pill('link', 'hub not running', 'bad'); K.pill('client', '…'); return; }
   last = s;
@@ -28,9 +48,9 @@ async function tick() {
   phone(s);
   $('ht').innerHTML = row('Model', esc(s.model || '—')) + row('Firmware', esc(s.firmware || '—')) +
     (s.serial ? row('Serial', esc(s.serial)) : '') + row('Serial port', esc(s.port) + ' · 115200 baud') +
-    s.axes.map((a) => row(esc(a.alpaca), esc(a.name) + (a.dev_type ? ` <span class="mut">· type ${esc(a.dev_type)}</span>` : '') +
+    s.axes.map((a) => row(esc(alpacaName(a)), esc(a.name) + (a.dev_type ? ` <span class="mut">· type ${esc(a.dev_type)}</span>` : '') +
       (a.max ? ` <span class="mut">· max ${steps(a.max)}</span>` : ''))).join('') +
-    s.axes.filter((a) => a.settings && a.settings.length).map((a) => row(esc(a.alpaca) + ' settings',
+    s.axes.filter((a) => a.settings && a.settings.length).map((a) => row(esc(alpacaName(a)) + ' settings',
       a.settings.map(([k, v]) => `${esc(k)}: <b>${esc(v)}</b>`).join('<br>') + '<br><span class="mut">stored on the device; change them in Optec\'s software</span>')).join('') +
     (s.axes.some((a) => a.kind == 'rotator') ? row('Sky offset', f(s.axes.find((a) => a.kind == 'rotator').sky_offset, 3, '°') + ' <span class="mut">(set by Sync, kept by the hub)</span>') : '') +
     (s.error ? row('Last problem', `<span class="warn">${esc(s.error)}</span>`) : '');
