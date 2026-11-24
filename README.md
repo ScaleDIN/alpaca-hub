@@ -7,6 +7,11 @@ programs' device lists. A device plugged in later appears within about 15 s, or 
 The Overview also charts every device's readings together on one time axis (temperatures, power, positions, dew,
 or any mix), with values of the same unit on one scale.
 
+**[Read the guide](docs/guide/README.md)**: what it does, installing, the Overview, each device's page, imaging
+programs, updates and troubleshooting, with screenshots.
+
+![The Overview](docs/guide/img/overview.png)
+
 ## Quick start
 
 1. **Download** from the [latest release](https://github.com/ScaleDIN/alpaca-hub/releases/latest): the hub,
@@ -30,8 +35,9 @@ or any mix), with values of the same unit on one scale.
 5. **Updates:** the hub looks for new versions once a day and shows them on the Overview, where *Install* updates it
    on the hub's PC. The Overview's *Updates* setting turns this off.
 
-The user guide (Start menu: *User guide*, or the **?** on the page) explains the page, the settings and what to do
-when a device isn't found. Moving from the devices' older standalone services? Read its *Before the first start*.
+More in [the guide](docs/guide/README.md), and in the short user guide installed with the hub (Start menu: *User
+guide*, or the **?** on the page). Moving from the devices' older standalone services? Read
+[Before the first start](docs/guide/2-install.md#3-before-the-first-start).
 
 What changed in each version: [CHANGES.md](CHANGES.md). MIT licence ([LICENSE](LICENSE)). Issues and pull requests
 are welcome; a new driver is a folder of its own ([docs/WRITING-DRIVERS.md](docs/WRITING-DRIVERS.md)).
