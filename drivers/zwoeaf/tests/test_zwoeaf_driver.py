@@ -229,6 +229,30 @@ class InstanceTests(unittest.TestCase):
         self.assertEqual(code, 409)
         self.assertIn("hand controller", text)
         self.assertIn("hand controller", self.status()["state"])
+        self.assertEqual(self.status()["last_move"]["text"], "being moved by the hand controller")
+        self.assertTrue(wait_for(lambda: not self.inst.moving_flag, 40))
+        self.assertEqual(self.status()["last_move"], {"text": "moved by the hand controller: 1000 → 5000",
+                                                      "state": "ok"})
+
+    def test_moved_by_another_program(self):
+        # 2026-11-24: ZWO's ASCOM driver opened and moved the EAF while the hub held it; the page showed nothing.
+        self.sim.speed = 500.0
+        self.sim.move(3000)                       # straight on the focuser, as another program does
+        self.assertTrue(wait_for(lambda: self.inst.moving_flag))
+        self.assertEqual(self.status()["last_move"]["text"], "being moved by another program")
+        self.assertEqual(self.status()["state"], "being moved by another program")
+        self.assertTrue(wait_for(lambda: not self.inst.moving_flag))
+        self.assertEqual(self.status()["last_move"], {"text": "moved by another program: 1000 → 3000",
+                                                      "state": "warn"})
+        # too quick for a poll to see it moving: still noticed from the position
+        self.sim.speed = 1e6
+        self.sim.move(3010)
+        self.assertTrue(wait_for(lambda: self.status()["last_move"]["text"] == "moved by another program: 3000 → 3010"))
+        # our own moves stay ours
+        self.assertEqual(self.call("POST", "/control", op="goto", value="2000")[0], 200)
+        self.assertTrue(wait_for(lambda: self.status()["last_move"]["text"] == "reached 2000"))
+        time.sleep(0.5)
+        self.assertEqual(self.status()["last_move"]["text"], "reached 2000")
 
     def test_unplugged_mid_move_then_back(self):
         self.connect()

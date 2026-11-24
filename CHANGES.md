@@ -4,6 +4,10 @@ What changed in each release of the Alpaca Hub and its drivers. Newest first. Ea
 `## <Hub | driver key> <version> (<date>)`: `packaging/build.py release` takes each new version's notes from here
 for the hub's update check, and refuses a release whose new versions have no entry.
 
+## zwoeaf 0.1.2 (2026-11-24)
+- The page says when the focuser was moved by another program (or the hand controller), and from where to where:
+  the EAF can be opened by two programs at once, for example ZWO's own ASCOM driver while the hub holds it.
+
 ## zwoeaf 0.1.1 (2026-11-24)
 - At the end of a move an imaging program could briefly read a position short of the target (for example 7506 for
   7570) while the focuser was already reported stopped, when the focuser answers slowly. It now always reads the

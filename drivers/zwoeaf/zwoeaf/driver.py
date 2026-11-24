@@ -33,7 +33,8 @@ UP_S = 5.0                  # up while a read succeeded this recently
 RELOCATE_S = 2.0            # a lost focuser is looked for this often
 MIN_SPEED = 50.0            # steps/s assumed before a move has been timed: a move longer than its steps at this
 LIMIT_EXTRA_S = 30.0        # speed plus this is "not finishing"; once timed: twice the time plus this
-SIM_PID = 0x1F10            # guess until step 1 reads a unit's USB IDs
+OURS_S = 2.0                # after a move of ours ends, steps this long still count as ours, not another program's
+SIM_PID = 0x1F10            # the USB PID seen on a real EAF (2026-11-24)
 
 
 class ZwoEafDriver(Driver):
@@ -159,6 +160,8 @@ class EafInstance(Instance):
         self.code = None
         self.stalled = None         # position it stalled at (E5), until the next move
         self.move = None            # {"from", "target", "t0", "by"} for our own moves
+        self.other = None           # {"from", "hand"}: a move the hub didn't start, while it runs
+        self._ours_until = 0.0      # steps until then still belong to our last move (a stall, a stop slowing down)
         self.last_move = None       # {"text", "state"}: how the last move ended, for the page
         self.speed = None           # steps/s, from timed moves
         self.lost = None            # why it is not usable now ("not found: unplugged or no power?")
@@ -276,6 +279,7 @@ class EafInstance(Instance):
         stop_it = False
         with self._lock:
             self._ok_at = time.monotonic()
+            prev = self.position
             self.position, self.moving_flag, self.hand, self.temperature = pos, moving, hand, temp
             self.code = code
             if code == "E5" and self.stalled is None:
@@ -284,11 +288,13 @@ class EafInstance(Instance):
                                   + (f", on the way to {self.move['target']}" if self.move else ""), "state": "bad"}
                 log.warning("%s: motor stall (E5) at %d", self.slug, pos)
                 self.move = None
+                self._ours_until = time.monotonic() + OURS_S
             mv = self.move
             if mv is not None:
                 took = time.monotonic() - mv["t0"]
                 if not moving:
                     self.move = None
+                    self._ours_until = time.monotonic() + OURS_S
                     if pos == mv["target"]:
                         dist = abs(mv["target"] - mv["from"])
                         if dist >= 200 and took > 0.2:
@@ -301,15 +307,43 @@ class EafInstance(Instance):
                         self.last_move = {"text": f"stopped at {pos}, short of {mv['target']}", "state": "warn"}
                 elif took > self.limit(mv):
                     self.move = None
+                    self._ours_until = time.monotonic() + OURS_S
                     self.last_move = {"text": f"not finishing: stopped after {took:.0f} s at {pos}, on the way to "
                                               f"{mv['target']}. Jammed?", "state": "bad"}
                     log.warning("%s: move to %d not finishing after %.0f s: stopping it", self.slug, mv["target"], took)
                     stop_it = True
+            elif time.monotonic() >= self._ours_until:
+                self._note_other(prev, pos, moving, hand)
         if stop_it:
             try:
                 self.sdk.stop(id_)
             except EafError as e:
                 self.last_error = str(e)
+
+    def _note_other(self, prev, pos, moving, hand):
+        """A move the hub didn't start: the hand controller (the SDK says so) or another program, which can open the
+        EAF while the hub holds it (ZWO's ASCOM driver did, 2026-11-24). Shown on the page as the last move. Called
+        with the lock held, when no move of ours is running."""
+        o = self.other
+        if moving:
+            if o is None:
+                self.other = {"from": prev if prev is not None else pos, "hand": hand}
+                who = "the hand controller" if hand else "another program"
+                self.last_move = {"text": f"being moved by {who}", "state": "warn"}
+                log.info("%s: being moved by %s, from %s", self.slug, who, self.other["from"])
+            elif hand:
+                o["hand"] = True
+            return
+        if o is not None:
+            self.other = None
+            start, by_hand = o["from"], o["hand"] or hand
+        elif prev is not None and pos != prev:        # the whole move fell between two polls
+            start, by_hand = prev, hand
+        else:
+            return
+        who = "the hand controller" if by_hand else "another program"
+        self.last_move = {"text": f"moved by {who}: {start} → {pos}", "state": "ok" if by_hand else "warn"}
+        log.info("%s: moved by %s: %d -> %d", self.slug, who, start, pos)
 
     def limit(self, mv):
         dist = abs(mv["target"] - mv["from"])
@@ -342,6 +376,7 @@ class EafInstance(Instance):
             raise AlpacaError(DRIVER_ERROR, str(e))
         with self._lock:
             self.stalled = None
+            self.other = None
             self.move = {"from": pos, "target": target, "t0": time.monotonic(), "by": by}
             self.moving_flag = True if pos != target else self.moving_flag
             self.last_move = {"text": f"moving to {target}", "state": "warn"}
@@ -373,7 +408,7 @@ class EafInstance(Instance):
         if self.hand:
             return f"moved by the hand controller, at {self.position}", "warn"
         if self.moving_flag:
-            return f"moving to {self.move['target']}" if self.move else "moving", "warn"
+            return (f"moving to {self.move['target']}" if self.move else "being moved by another program"), "warn"
         return "idle", "ok"
 
     def summary(self):
