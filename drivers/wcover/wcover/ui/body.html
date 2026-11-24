@@ -1,0 +1,46 @@
+<!-- WandererCover V4-EC flat panel status page (device-web-ui kit v10). Built by hub/core/page.py, served by hub/devserver.py. -->
+<main class="cols top">
+<div class="pinwrap" id="pinwrap" aria-hidden="true"><div class="pinbar" id="pinbar"></div></div>
+<header><div><h1 id="name">Flat panel</h1><div class="mut" id="sub"></div></div>
+<div class="hright"><span id="link" class="pill" title="Serial link between this PC and the panel">…</span>
+<span id="client" class="pill" title="An ASCOM Alpaca client (your imaging program, for example) has connected the CoverCalibrator">…</span>
+<span class="pill warn" id="upd" style="display:none;cursor:pointer" onclick="location.reload()" title="The hub runs a different version than this page came from">New version: reload</span>
+<button class="hbtn" id="night" title="Red night mode (keeps dark adaptation)">🌙</button></div></header>
+
+<div class="grid" id="tiles"></div>
+
+<section class="card"><div class="bar"><span class="seg" id="ranges"></span><select id="panel" aria-label="Chart"></select><span class="sp"></span>
+<button id="zr" style="display:none" title="Show the whole range again (or double-click the chart)">Reset zoom</button><button id="brng" class="rng" title="Each step's lowest to highest reading, as a band">Range: auto</button><button id="bpng" title="Save the chart as shown as a PNG image">PNG</button><button id="bcsv" title="The samples in view as CSV">CSV</button></div>
+<div class="cw"><canvas id="ch"></canvas><div class="tip" id="tip"></div></div>
+<div class="lg" id="cust" style="display:none;margin:6px 0 0"></div><div class="lg" id="lg"></div><div class="mut" id="chNote" style="font-size:12px;margin-top:4px"></div>
+<p class="note" style="margin:6px 0 0">1 s detail for the last 10 minutes, 10-second averages for 24 hours (the band: each step's lowest to highest reading, drawn when one or two values are on; Range switches it), kept while the hub runs. The panel is silent while the cover moves, so the line breaks there.</p></section>
+
+<section class="card" id="ctl"><h2>Controls</h2>
+<div class="lock" id="cLock" aria-live="polite"><span id="cLockTxt"></span><button type="button" id="cUnlock"></button></div>
+<div class="cgrid">
+<form class="cgrp ctl" id="fCover" autocomplete="off"><h3>Cover</h3>
+<div class="crow"><span title="The cap swings to the angles stored on the panel. A move takes about 18 s, and the panel answers nothing meanwhile">Cap</span><span class="seg"><button type="button" data-op="open">Open</button><button type="button" data-op="close">Close</button></span></div>
+<label title="The heater on the panel. Wanderer's firmware has four levels only">Heater <select id="heat"><option value="0">Off</option><option value="50">Low</option><option value="100">High</option><option value="150">Max</option></select></label></form>
+<form class="cgrp ctl" id="fLight" autocomplete="off"><h3>Light</h3>
+<label title="1 to 255. The panel only lights while the cover is closed: with the cover open it switches the light off by itself">Brightness <span class="nu"><input name="b" type="number" min="1" max="255" step="1" inputmode="numeric"><i class="u">/ 255</i></span></label>
+<div class="crow"><span>Light</span><span class="seg"><button type="button" id="lOn">On</button><button type="button" id="lOff">Off</button></span></div></form>
+<form class="cgrp ctl" id="fAng" autocomplete="off"><h3>Positions</h3>
+<label title="Where Close stops the cap, 10 to 90°. Stored on the panel">Closed angle <span class="nu"><input name="c" type="number" min="10" max="90" step="0.5" inputmode="decimal"><i class="u">°</i></span></label>
+<label title="Where Open stops the cap, 100 to 300°. Stored on the panel. Check the cap can swing that far on your mount">Open angle <span class="nu"><input name="o" type="number" min="100" max="300" step="0.5" inputmode="decimal"><i class="u">°</i></span></label>
+<div class="crow"><span title="Sends only the angles you changed. The cap doesn't move now. It goes to a new angle on its next move to that end; while it already rests there, pressing that end's button again doesn't move it (the panel ignores a repeated move): use Jog to move it now">Store on the panel</span><button type="submit" id="aSet">Set</button></div>
+<label title="How far one jog moves the cap">Jog step <select id="jStep"><option value="1">1°</option><option value="2">2°</option><option value="5" selected>5°</option><option value="10">10°</option></select></label>
+<div class="crow"><span title="With the cover open or closed: moves the cap by the step and stores where it stops as that end's angle, so you can set the positions by watching the cap. Each jog is a move; the panel answers nothing until it ends" id="jLbl">Jog</span><span class="seg"><button type="button" id="jClose">Close</button><button type="button" id="jOpen">Open</button></span></div></form>
+</div>
+<p class="msg" id="cMsg" aria-live="polite"></p>
+<p class="note" style="margin:6px 0 0">The same panel your imaging program drives as a flat panel. The controls lock while an Alpaca program is connected.</p></section>
+
+<!-- From 1000 px: tiles, chart and Controls on the left, these cards in the side column (kit "cols"), as on the
+     NiteCrawler and WandererBox pages. -->
+<div id="side">
+<details class="card" id="d-panel"><summary>Panel</summary>
+<table class="kv" id="pt"></table>
+<p class="note" style="margin:6px 0 0">The open and closed angles are stored on the panel itself; set them under Controls → Positions. The panel's own angle auto-detect isn't offered here: it can strain the mount (it stretched the strap on this setup).</p></details>
+
+<details class="card" id="d-phone"><summary>Open on a phone</summary><div id="pQr"></div><p class="mut" id="pUrl" style="margin:0"></p></details>
+</div>
+</main>

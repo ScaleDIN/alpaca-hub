@@ -1,0 +1,19 @@
+<!-- Example thermometer status page. The hub builds it into one page with its UI kit (hub/ui/kit; hub/core/page.py):
+     this body, device.js and device.css. The kit's skeleton (hub/ui/kit/skeleton-body.html) shows the standard order. -->
+<main>
+<div class="pinwrap" id="pinwrap" aria-hidden="true"><div class="pinbar" id="pinbar"></div></div>
+<header><div><h1 id="name">Thermometer</h1><div class="mut" id="sub"></div></div>
+<div class="hright"><span id="link" class="pill">…</span><span id="client" class="pill">…</span>
+<span class="pill warn" id="upd" style="display:none;cursor:pointer" onclick="location.reload()" title="The driver was updated: reload the page">New version: reload</span>
+<button class="hbtn" id="night" title="Red night mode (keeps dark adaptation)">🌙</button></div></header>
+
+<div class="grid" id="tiles"></div>
+
+<section class="card" id="ctl"><h2>Calibration</h2>
+<form class="ctl" id="fOff" autocomplete="off">
+<label title="Added to every reading, -10 to 10 °C. Saved for this thermometer">Offset <span class="nu"><input name="v" type="number" min="-10" max="10" step="0.1" inputmode="decimal"><i class="u">°C</i></span></label>
+<button type="submit">Save</button></form>
+<p class="msg" id="msg" aria-live="polite"></p></section>
+
+<details class="card" id="d-dev"><summary>Device</summary><table id="dt"></table></details>
+</main>

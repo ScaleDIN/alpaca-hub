@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+build/
+dist/
+install-snapshots/
+.claude/firmware-watch.json
+soak/

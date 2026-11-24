@@ -1,0 +1,18 @@
+<!-- The hub Overview's chart of every device (device-web-ui kit v14), the saved history files, and a chart of one
+     opened CSV file. Built by hub/core/page.py, served at /hub/chart/ by hub/host.py, shown in an iframe on the
+     Overview (hub/shell.py). -->
+<main>
+<h1 hidden>All devices</h1>
+<section class="card" id="live" style="display:none"><div class="bar"><span class="seg" id="ranges"></span><select id="panel" aria-label="Chart"></select><span class="sp"></span>
+<button id="zr" style="display:none" title="Show the whole range again (or double-click the chart)">Reset zoom</button><button id="brng" class="rng" title="Each step's lowest to highest reading, as a band">Range: auto</button><button id="bpng" title="Save the chart as shown as a PNG image">PNG</button><button id="bcsv" title="The samples in view as CSV">CSV</button></div>
+<div class="cw"><canvas id="ch"></canvas><div class="tip" id="tip"></div></div>
+<div class="lg" id="cust" style="display:none;margin:6px 0 0"></div><div class="lg" id="lg"></div><div class="mut" id="chNote" style="font-size:12px;margin-top:4px"></div>
+<p class="note" id="hNote" style="margin:6px 0 0">Every connected device on one time axis: 1 s detail for the last 10 minutes, 10-second averages before that (1-minute ones from the day files); the band around a line is the lowest to highest reading, so a short spike still shows (drawn when one or two values are on; Range switches it on or off for every view). Before what the devices hold in memory, the chart reads their day files below, back 7 days: a time the hub or PC was off shows as a gap. Values with the same unit share a scale.</p></section>
+
+<section class="card" id="saved"><div class="bar"><h2 style="margin:0">Saved history</h2><span class="sp"></span>
+<button id="openCsv" title="Plot a CSV file saved earlier: a day file, or a chart's CSV download">Open CSV…</button><input type="file" id="csvFile" accept=".csv,text/csv" hidden></div>
+<div id="savedList"></div>
+<p class="mut" id="hFolder" style="margin:8px 0 0;font-size:12px;overflow-wrap:anywhere"></p>
+<p class="note" style="margin:6px 0 0">Every device's 1-minute averages, with their lowest and highest readings, go to one file per day, there also when the device isn't connected. They are kept for
+<select id="hDays" aria-label="Days to keep the files"><option value="1">1 day</option><option value="2">2 days</option><option value="3">3 days</option><option value="7">7 days</option><option value="14">14 days</option><option value="30">30 days</option><option value="90">90 days</option><option value="365">365 days</option></select> (every device: the power box's tab shows the same setting). An opened file is plotted below.</p></section>
+</main>

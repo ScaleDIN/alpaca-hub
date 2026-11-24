@@ -1,0 +1,16 @@
+.qr{display:block;background:#fff;border-radius:6px;margin:4px 0 8px;image-rendering:pixelated}
+:root[data-night] .qr{opacity:.55}
+.pinbar{font-variant-numeric:tabular-nums}.pinbar>span{display:inline-block;white-space:nowrap}
+.pinbar .w{display:none}@media (min-width:760px){.pinbar .w{display:inline-block}}
+/* jog buttons: one row, shrinking evenly instead of wrapping */
+.jog{display:flex;width:100%;margin:8px 0 0;box-sizing:border-box}.jog>button{flex:1 1 0;min-width:0;padding-left:2px;padding-right:2px;font-variant-numeric:tabular-nums}
+#ctl .cgrid{grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+.jog2{margin-top:4px}
+.dialw{display:flex;justify-content:center;margin:10px 0 2px}#dial{width:min(220px,70vw);height:auto;touch-action:none;cursor:crosshair;outline:none}
+#dial:focus-visible{outline:2px solid var(--acc);outline-offset:4px;border-radius:50%}
+#dial .ring{fill:none;stroke:var(--line);stroke-width:2}#dial .tk{stroke:var(--mut);stroke-width:1.5}#dial .tk.b{stroke-width:3}
+#dial .lbl{fill:var(--mut);font-size:12px;text-anchor:middle;dominant-baseline:middle}
+#dial .now{stroke:var(--fg);stroke-width:4;stroke-linecap:round}#dial .tgt{stroke:var(--warn);stroke-width:3;stroke-linecap:round;stroke-dasharray:6 5}
+#dial .hub{fill:var(--card);stroke:var(--line)}#dial .val{fill:var(--fg);font-size:22px;font-weight:600;text-anchor:middle;dominant-baseline:middle;font-variant-numeric:tabular-nums}
+#dial .sub{fill:var(--warn);font-size:12px;text-anchor:middle;dominant-baseline:middle}
+.rcount label{flex:1}

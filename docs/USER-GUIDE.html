@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Alpaca Hub user guide</title>
+<style>
+:root{--bg:#f7f8fa;--fg:#1b1f27;--mut:#5b6474;--card:#fff;--line:#dfe3ea;--acc:#c2412d}
+@media (prefers-color-scheme:dark){:root{--bg:#11151c;--fg:#e6e9ef;--mut:#9aa3b2;--card:#1a1f29;--line:#2b3240;--acc:#e0533d}}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.55 system-ui,Segoe UI,sans-serif}
+main{max-width:820px;margin:0 auto;padding:24px 16px 64px}
+h1{font-size:28px;margin:8px 0 4px}h2{font-size:20px;margin:32px 0 8px;border-bottom:1px solid var(--line);padding-bottom:4px}
+h3{font-size:16px;margin:20px 0 6px}p,li{color:var(--fg)}.lead{color:var(--mut)}
+code,kbd{font:14px Consolas,monospace;background:var(--card);border:1px solid var(--line);border-radius:4px;padding:1px 4px}
+.note{background:var(--card);border-left:4px solid var(--acc);padding:10px 14px;border-radius:6px;margin:14px 0}
+table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top}
+a{color:var(--acc)}
+</style></head><body><main>
+<h1>Alpaca Hub</h1>
+<p class="lead">One ASCOM Alpaca service for every astronomy device on this PC. Imaging programs that speak Alpaca find all
+of them at one address. Each device has a tab with its status and controls, also on a phone.</p>
+
+<h2>What gets installed</h2>
+<ul>
+<li><b>The hub</b> (<code>AlpacaHub-&lt;version&gt;-Setup.exe</code>): finds devices on the serial ports, serves them over
+Alpaca, and shows the status page. It has no device drivers of its own.</li>
+<li><b>A driver for each kind of device</b> (<code>AlpacaHub-&lt;driver&gt;-&lt;version&gt;-Setup.exe</code>), for example
+<code>wcover</code> (WandererCover V4-EC flat panel), <code>wbox</code> (WandererBox Plus V3), <code>nitecrawler</code>
+(Moonlite NiteCrawler). Install the hub first, then the drivers you need, in any order, while the hub runs or not.</li>
+</ul>
+<p>Drivers go to <code>%ProgramData%\AlpacaHub\drivers</code>. Each driver runs in its own process: if one fails, the hub
+starts it again and the other devices carry on.</p>
+<p><b>No ASCOM Platform needed.</b> The hub and its drivers work on their own: Alpaca programs talk to the hub over the
+network, not through Windows' ASCOM drivers. Only a program that knows classic ASCOM but not Alpaca needs the ASCOM
+Platform (see <a href="#programs">Alpaca programs</a>).</p>
+
+<h2>Before the first start</h2>
+<div class="note"><b>If this PC ran the older services</b> (the NiteCrawler Alpaca service or WBPlus Stock Alpaca): stop and
+uninstall them first. Only one program can use a COM port.</div>
+<div class="note"><b>Settings are taken over once.</b> On its first start the hub copies the older services' settings
+(focus maximum, dew settings, names) into its own folder, <code>%LOCALAPPDATA%\alpaca-hub</code>. Check them on each
+device's tab before moving anything: <b>focus maximum</b> on the NiteCrawler tab, and the <b>dew heater settings</b> on
+the box's tab.<br><br>
+<b>WandererBox:</b> the box stores every command it receives. With the older service's dew settings, the first start may
+send it a dew command (for example manual 100 %), and a box set to "switch the dew heater off on exit" gets a command
+when the hub stops. Look at the dew settings you used before, and change them on the box tab if needed.</div>
+
+<h2>Starting and stopping</h2>
+<table>
+<tr><td>Start menu → <b>Alpaca Hub</b></td><td>starts the hub and opens its status page (or just opens the page if it
+already runs)</td></tr>
+<tr><td>Start menu → <b>Stop Alpaca Hub</b></td><td>stops it cleanly: each driver stops its device first</td></tr>
+<tr><td>Start at logon</td><td>an installer option (off unless ticked)</td></tr>
+<tr><td>Desktop shortcuts</td><td>an installer option (off unless ticked): <b>Alpaca Hub</b> and <b>Stop Alpaca Hub</b>
+on the desktop, the same as in the Start menu</td></tr>
+<tr><td>Start menu → <b>Settings and log folder</b></td><td><code>%LOCALAPPDATA%\alpaca-hub</code>: <code>hub.json</code>,
+<code>hub.log</code>, <code>drivers\&lt;driver&gt;\&lt;unit&gt;.json</code> (each device's settings),
+<code>logs\&lt;driver&gt;.log</code> (each driver's log)</td></tr>
+</table>
+<p>The status page is at <a href="http://localhost:11111/">http://localhost:11111/</a>. The firewall option lets phones
+and Alpaca programs on other computers in your home network reach it; the page shows the address to use (and a QR
+code).</p>
+<div class="note"><b>Who can use the devices?</b> Windows calls each network either <b>Private</b> (your home network,
+one you trust) or <b>Public</b> (a café, a hotel, anywhere else). On a Private network, phones and other computers can use
+the devices through the hub. On a Public network nobody else can, not even your own laptop on the same Wi-Fi; programs
+on this PC still can. To share the devices, set this PC's network to Private (Windows Settings → Network &amp; internet →
+your connection → Network profile type).<br><br>
+<b>Windows Firewall may ask on the first start</b> ("Do you want to allow public and private networks to access this
+app?"). It asks when the network is set to Public. Don't allow Public networks: that would let anyone on that network
+use your devices. Set the network to Private instead. Pressing <b>Cancel</b> can make Windows block the hub for
+other computers; if they still can't reach it once the network is Private, Start menu → <b>Allow network access
+(firewall)</b> undoes it.</div>
+
+<h2>The Overview tab</h2>
+<ul>
+<li><b>Devices</b>: each device found, with its port, a short status and its Alpaca numbers. Click one to open its tab.</li>
+<li><b>Scan now</b>: looks at the serial ports at once (the hub does it every 15 s anyway).</li>
+<li><b>Drivers</b>: every driver with its version and state (running, restarting, failed, off, refused).
+<b>Turn off</b> stops a driver and frees its ports until you turn it on again. A driver that failed several times
+shows its last log lines and <b>Try again</b>. A newer version that waits for programs to disconnect shows
+<b>Switch now</b>.</li>
+<li><b>Serial ports</b> (fold it open): every COM port and what the hub made of it. <b>Ignore</b> keeps the hub away from a port for good, for example a meter's USB cable or a device another program uses: never opened, never probed, also after a restart. A port whose USB chip has a serial number stays ignored on any COM number. <b>Stop ignoring</b> undoes it.</li>
+</ul>
+
+<h2 id="programs">Alpaca programs</h2>
+<p>Choose the devices from the Alpaca discovery list (or enter this PC's address and port 11111). Each device keeps its
+Alpaca number and UniqueID, so profiles stay valid. While a program is connected, a device's tab locks its controls;
+<b>Unlock</b> lets you change things deliberately.</p>
+<p><b>Programs that speak Alpaca</b> (NINA, SharpCap, ConformU and others) need nothing else. <b>A program that only
+knows classic ASCOM drivers</b> needs the ASCOM Platform (6.5 or later) on the PC where that program runs: in the
+ASCOM Chooser, turn on Alpaca discovery and pick the hub's device, and the Platform makes it look like an ordinary
+ASCOM driver to the program.</p>
+
+<h2>Updating and removing drivers</h2>
+<ul>
+<li><b>Update</b>: run the newer driver installer. The hub switches to it within seconds if no program is connected to
+that driver's devices; otherwise when they disconnect, or when you press <b>Switch now</b>. The devices keep their tabs,
+Alpaca numbers and UniqueIDs.</li>
+<li><b>Remove</b>: Windows Settings → Apps → "Alpaca Hub driver: …". The hub stops the driver and frees its ports.</li>
+<li>Removing the hub leaves the drivers installed.</li>
+</ul>
+
+<h2>When something doesn't work</h2>
+<ul>
+<li><b>Every scan is slow, or a port is "stuck"</b>: if it's a port you don't need the hub for, Ignore it under Overview → Serial ports.</li>
+<li><b>A device isn't found</b>: is another program (an older service, a vendor's tool) using its port? Close it and
+press <b>Scan now</b>. Is the device's driver installed and running (Overview → Drivers)?</li>
+<li><b>"stuck inside Windows' serial driver"</b>: some USB serial chips hang when opened. The hub keeps going with the
+other ports; unplugging the device's USB cable and plugging it back in frees it.</li>
+<li><b>Phones or other computers can't reach the hub</b>: is this PC's network set to Private (Windows Settings →
+Network &amp; internet)? If you pressed Cancel at the firewall question, or left the firewall option unticked when
+installing: Start menu → <b>Allow network access (firewall)</b>. It asks for administrator rights, removes the rules
+that block the hub and allows it on private networks again (never on public ones).</li>
+<li><b>A driver keeps restarting or failed</b>: Overview shows why and its last log lines; the full log is
+<code>logs\&lt;driver&gt;.log</code> in the settings folder.</li>
+<li><b>Two boxes or panels</b>: these have no serial number, so the hub tells them apart by their USB socket. Keep each
+on its own socket.</li>
+</ul>
+</main></body></html>

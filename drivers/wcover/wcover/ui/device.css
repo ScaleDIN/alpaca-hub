@@ -1,0 +1,2 @@
+.qr{display:block;background:#fff;border-radius:6px;margin:4px 0 8px;image-rendering:pixelated}
+:root[data-night] .qr{opacity:.55}

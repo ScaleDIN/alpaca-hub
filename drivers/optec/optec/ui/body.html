@@ -1,0 +1,31 @@
+<!-- Optec FocusLynx / ThirdLynx and Gemini / Hercules status page (device-web-ui kit v10). Built by hub/core/page.py, served by hub/devserver.py. -->
+<main class="cols top">
+<div class="pinwrap" id="pinwrap" aria-hidden="true"><div class="pinbar" id="pinbar"></div></div>
+<header><div><h1 id="name">Optec</h1><div class="mut" id="sub"></div></div>
+<div class="hright"><span id="link" class="pill" title="Serial link between this PC and the Optec hub">…</span>
+<span id="client" class="pill" title="An ASCOM Alpaca client (your imaging program, for example) has connected one of this hub's devices">…</span>
+<span class="pill warn" id="upd" style="display:none;cursor:pointer" onclick="location.reload()" title="The hub runs a different version than this page came from">New version: reload</span>
+<button class="hbtn" id="night" title="Red night mode (keeps dark adaptation)">🌙</button></div></header>
+
+<div class="grid" id="tiles"></div>
+
+<section class="card"><div class="bar"><span class="seg" id="ranges"></span><select id="panel" aria-label="Chart"></select><span class="sp"></span>
+<button id="zr" style="display:none" title="Show the whole range again (or double-click the chart)">Reset zoom</button><button id="brng" class="rng" title="Each step's lowest to highest reading, as a band">Range: auto</button><button id="bpng" title="Save the chart as shown as a PNG image">PNG</button><button id="bcsv" title="The samples in view as CSV">CSV</button></div>
+<div class="cw"><canvas id="ch"></canvas><div class="tip" id="tip"></div></div>
+<div class="lg" id="cust" style="display:none;margin:6px 0 0"></div><div class="lg" id="lg"></div><div class="mut" id="chNote" style="font-size:12px;margin-top:4px"></div>
+<p class="note" style="margin:6px 0 0">1 s detail for the last 10 minutes, 10-second averages for 24 hours (the band: each step's lowest to highest reading, drawn when one or two values are on; Range switches it), kept while the hub runs.</p></section>
+
+<section class="card" id="ctl"><h2>Controls</h2>
+<div class="lock" id="cLock" aria-live="polite"><span id="cLockTxt"></span><button type="button" id="cUnlock"></button></div>
+<div class="cgrid" id="axes"></div>
+<p class="msg" id="cMsg" aria-live="polite"></p>
+<p class="note" style="margin:6px 0 0">The same motors your Alpaca programs drive. The controls lock while an Alpaca program is connected. Device type, maximum travel, backlash, home at power-up and temperature compensation stay as Optec's own software set them: the hub never changes them (the stored values are under Hub).</p></section>
+
+<!-- From 1000 px: tiles, chart and Controls on the left, these cards in the side column (kit "cols"). -->
+<div id="side">
+<details class="card" id="d-hub"><summary>Hub</summary>
+<table class="kv" id="ht"></table></details>
+
+<details class="card" id="d-phone"><summary>Open on a phone</summary><div id="pQr"></div><p class="mut" id="pUrl" style="margin:0"></p></details>
+</div>
+</main>

@@ -1,0 +1,13 @@
+/* Shown in an iframe on the hub's Overview, which supplies the column and its padding. */
+main{max-width:none;padding:0}
+main .card{margin:0}
+main .card+.card{margin-top:16px}
+/* Saved history: one <details> per device unit, one row per file. */
+#savedList details{margin:8px 0 0}
+#savedList summary{cursor:pointer}
+.hrow{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;margin:4px 0 0 16px;font-size:13px}
+.hrow span:first-child{min-width:12em}
+.hrow button{padding:2px 10px}
+#savedList a{color:var(--acc)}
+.hrow code{font-size:12px;overflow-wrap:anywhere}
+#hFolder button,.hrow .opendir{padding:2px 10px;margin-left:6px}

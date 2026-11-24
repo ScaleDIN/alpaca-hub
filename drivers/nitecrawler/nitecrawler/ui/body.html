@@ -1,0 +1,90 @@
+<!-- NiteCrawler Alpaca status page (device-web-ui kit). Built into one page by hub/core/page.py. -->
+<main class="cols top">
+<div class="pinwrap" id="pinwrap" aria-hidden="true"><div class="pinbar" id="pinbar"></div></div>
+<header><div><h1 id="name">NiteCrawler</h1><div class="mut" id="sub"></div></div>
+<div class="hright"><span id="link" class="pill" title="Serial link between this PC and the NiteCrawler">…</span>
+<span id="client" class="pill" title="An ASCOM Alpaca client (your imaging program, for example) has connected the focuser or rotator">…</span>
+<span class="pill warn" id="upd" style="display:none;cursor:pointer" onclick="location.reload()" title="The service runs a different version than this page came from">New version: reload</span>
+<button class="hbtn" id="night" title="Red night mode (keeps dark adaptation)">🌙</button></div></header>
+
+<div class="grid" id="tiles"></div>
+
+<section class="card"><div class="bar"><span class="seg" id="ranges"></span><select id="panel" aria-label="Chart"></select><span class="sp"></span>
+<button id="zr" style="display:none" title="Show the whole range again (or double-click the chart)">Reset zoom</button><button id="brng" class="rng" title="Each step's lowest to highest reading, as a band">Range: auto</button><button id="bpng" title="Save the chart as shown as a PNG image">PNG</button><button id="bcsv" title="The samples in view as CSV">CSV</button></div>
+<div class="cw"><canvas id="ch"></canvas><div class="tip" id="tip"></div></div>
+<div class="lg" id="cust" style="display:none;margin:6px 0 0"></div><div class="lg" id="lg"></div><div class="mut" id="chNote" style="font-size:12px;margin-top:4px"></div>
+<p class="note" style="margin:6px 0 0">Hover, or slide a finger, for values; click or tap to pin. Zoom: drag sideways, or double-tap and slide; double-click or double-tap resets.
+1 s detail for the last 10 minutes, 10-second averages for 24 hours (the band: each step's lowest to highest reading, drawn when one or two values are on; Range switches it), kept while the hub runs.</p></section>
+
+<section class="card" id="ctl"><h2>Controls</h2>
+<div class="lock" id="cLock" aria-live="polite"><span id="cLockTxt"></span><button type="button" id="cUnlock"></button></div>
+<div class="cgrid">
+<form class="cgrp ctl" id="fFocus" autocomplete="off"><h3>Focus</h3>
+<label title="Absolute position, 0 to the focus maximum (Motion settings)">Go to <span class="nu"><input name="v" type="number" step="1" inputmode="numeric"><i class="u">steps</i></span></label>
+<div class="seg jog" data-axis="focus" title="Move in (relative, steps)"><button type="button" data-d="-5000">−5000</button><button type="button" data-d="-1000">−1000</button><button type="button" data-d="-100">−100</button><button type="button" data-d="-10">−10</button><button type="button" data-d="-1">−1</button></div><div class="seg jog jog2" data-axis="focus" title="Move out (relative, steps)"><button type="button" data-d="1">+1</button><button type="button" data-d="10">+10</button><button type="button" data-d="100">+100</button><button type="button" data-d="1000">+1000</button><button type="button" data-d="5000">+5000</button></div><div class="bar" style="margin:8px 0 0"><button>Go</button><button type="button" class="d halt" data-axis="focus">Stop</button>
+<button type="button" class="setpos" data-axis="focus" title="Tell the NiteCrawler that the focuser is at the number in Go to (1SP n#). The motor doesn't move">Set position</button></div></form>
+<form class="cgrp ctl" id="fRot" autocomplete="off"><h3>Rotator</h3>
+<label title="Sky angle (position angle after Sync), 0 to 359.99°. The rotator never goes more than half a turn from home, so the cable can't wind up">Go to <span class="nu"><input name="v" type="number" step="0.01" inputmode="decimal"><i class="u">°</i></span></label>
+<div class="dialw"><svg id="dial" viewBox="-110 -110 220 220" role="slider" aria-label="Rotator angle: tap or drag to pick a Go to angle" tabindex="0"></svg></div>
+<div class="seg jog" data-axis="rotator" title="Relative move"><button type="button" data-d="-90">−90</button><button type="button" data-d="-10">−10</button><button type="button" data-d="-1">−1</button><button type="button" data-d="1">+1</button><button type="button" data-d="10">+10</button><button type="button" data-d="90">+90</button></div>
+<div class="bar" style="margin:8px 0 0"><button>Go</button><button type="button" class="d halt" data-axis="rotator">Stop</button>
+<button type="button" id="rSync" title="Call the current rotator angle the number in Go to (e.g. a plate-solved position angle). Saved on this PC; the motor doesn't move">Sync to this angle</button></div>
+<div class="bar rcount" style="margin:8px 0 0"><label title="The NiteCrawler's own rotator count (2SP n#, Moonlite's rotation SET POS). The motor doesn't move; home moves with the count, and the sky angle stays">Motor count <span class="nu"><input id="rCount" type="number" step="1" inputmode="numeric"><i class="u">steps</i></span></label><button type="button" id="rSet">Set</button></div></form>
+<form class="cgrp ctl" id="fAux" autocomplete="off"><h3>Aux <span class="mut" id="auxNote" style="font-weight:400;font-size:12px"></span></h3>
+<label>Go to <span class="nu"><input name="v" type="number" step="1" inputmode="numeric"><i class="u">steps</i></span></label>
+<div class="seg jog" data-axis="aux" title="Move in (relative, steps)"><button type="button" data-d="-5000">−5000</button><button type="button" data-d="-1000">−1000</button><button type="button" data-d="-100">−100</button><button type="button" data-d="-10">−10</button><button type="button" data-d="-1">−1</button></div><div class="seg jog jog2" data-axis="aux" title="Move out (relative, steps)"><button type="button" data-d="1">+1</button><button type="button" data-d="10">+10</button><button type="button" data-d="100">+100</button><button type="button" data-d="1000">+1000</button><button type="button" data-d="5000">+5000</button></div><div class="bar" style="margin:8px 0 0"><button>Go</button><button type="button" class="d halt" data-axis="aux">Stop</button>
+<button type="button" class="setpos" data-axis="aux" title="Tell the NiteCrawler that the aux motor is at the number in Go to (3SP n#). The motor doesn't move">Set position</button></div></form>
+</div>
+<div class="bar" style="margin:10px 0 0"><button type="button" id="stopAll" class="d" title="Stops every motor, also while homing. Never locked">Stop all motors</button>
+<button type="button" id="home" title="Runs the NiteCrawler's own homing: focus to the in-limit and rotator to its home switch. Nothing else answers until it has finished">Find home…</button></div>
+<p class="msg" id="cMsg" aria-live="polite"></p>
+<p class="note" style="margin:6px 0 0">The same motors your Alpaca programs drive. Stop always works; the other controls lock while an Alpaca program is connected.</p></section>
+
+<div id="side">
+<p class="note" id="rNote" style="display:none;margin:0">Settings are read-only here: change them on the PC the NiteCrawler is plugged into. The Controls work everywhere.</p>
+<details class="card" id="d-motion"><summary>Motion settings</summary>
+<form id="mf" class="ctl" autocomplete="off"><div class="cgrid">
+<div class="cgrp"><h3>Range</h3>
+<label title="Focuser MaxStep in Alpaca. Moves past it are refused. The NiteCrawler's own limit switches still protect the drawtube">Focus maximum <span class="nu"><input name="focus_max" type="number" step="1" min="1" inputmode="numeric"><i class="u">steps</i></span></label>
+<label title="0 = off (let the imaging program do backlash). Otherwise every inward move overshoots by this many steps and comes back out, so moves always finish going outward">Focus backlash <span class="nu"><input name="focus_backlash" type="number" step="1" min="0" inputmode="numeric"><i class="u">steps</i></span></label>
+<div class="crow pref" title="Serve the aux motor as Alpaca Focuser #1. Reconnect in the Alpaca program to see it"><label for="mAux">Aux motor as Focuser #1</label><input type="checkbox" id="mAux"></div>
+<label>Aux maximum <span class="nu"><input name="aux_max" type="number" step="1" min="1" inputmode="numeric"><i class="u">steps</i></span></label>
+<label title="0 = off. Same as focus backlash, for the aux motor">Aux backlash <span class="nu"><input name="aux_backlash" type="number" step="1" min="0" inputmode="numeric"><i class="u">steps</i></span></label>
+<div class="crow pref" title="Rotator Reverse in Alpaca: angles count the other way. The sky angle stays where it is"><label for="mRev">Rotator reversed</label><input type="checkbox" id="mRev"></div></div>
+<div class="cgrp"><h3 title="The NiteCrawler can't report its step delays, so the boxes stay empty until you set one here">Speed (step delay)</h3>
+<label title="Delay between motor steps, in units of 100 µs: smaller is faster. Sent to the NiteCrawler, which keeps it">Focus <span class="nu"><input name="focus" type="number" step="1" min="1" max="999" inputmode="numeric"><i class="u">×100 µs</i></span></label>
+<label>Rotator <span class="nu"><input name="rotator" type="number" step="1" min="1" max="999" inputmode="numeric"><i class="u">×100 µs</i></span></label>
+<label>Aux <span class="nu"><input name="aux" type="number" step="1" min="1" max="999" inputmode="numeric"><i class="u">×100 µs</i></span></label></div></div>
+<div class="bar" style="margin:8px 0 0"><button id="mSave">Save</button></div></form>
+<p class="msg" id="mMsg" aria-live="polite"></p></details>
+
+<details class="card" id="d-display"><summary>NiteCrawler display</summary>
+<form id="df" class="ctl" autocomplete="off">
+<label title="Backlight while you use it, 0 to 255">Brightness <span class="nu"><input name="brightness" type="number" step="1" min="0" max="255" inputmode="numeric"></span></label>
+<label title="Backlight after it dims, 0 to 255. Keep it low at night">Sleep brightness <span class="nu"><input name="sleep" type="number" step="1" min="0" max="255" inputmode="numeric"></span></label>
+<label title="Seconds without a key press before the backlight dims to the sleep brightness. 0 = never dim. Needs the patched NiteCrawler firmware (stock firmware doesn't know this setting); leave it blank to not send it">Dim after <span class="nu"><input name="dim_after" type="number" step="1" min="0" max="65535" inputmode="numeric"><i class="u">s</i></span></label>
+<div class="bar" style="margin:8px 0 0"><button id="dSave">Send</button></div></form>
+<p class="msg" id="dMsg" aria-live="polite"></p>
+<p class="mut" style="font-size:12px;margin-bottom:0">The firmware can't report the brightness levels, so those boxes show what was last sent from this page. Dim after is read from the NiteCrawler; it stays blank on stock firmware.</p></details>
+
+<details class="card" id="d-alpaca"><summary>ASCOM Alpaca</summary>
+<p style="margin:0 0 6px">Alpaca clients find this service on their own (discovery on UDP 32227). It offers:</p>
+<table id="devt"></table>
+<form id="nf" class="ctl" autocomplete="off" style="margin-top:6px">
+<label title="Shown in the Alpaca programs' device lists">Name in Alpaca programs <input name="name" type="text" maxlength="40" spellcheck="false"></label>
+<div class="bar" style="margin:8px 0 0"><button id="nSave">Save name</button><button type="button" id="nReset" class="d">Default name</button></div></form>
+<p class="msg" id="nMsg" aria-live="polite"></p>
+<p class="mut" id="aNote" style="font-size:12px;margin-bottom:0"></p></details>
+
+<details class="card" id="d-phone"><summary>Open on a phone</summary>
+<p id="pNow" style="margin:0 0 6px"></p><div id="pQr"></div>
+<p class="mut" style="font-size:12px;margin-bottom:0">The phone must be on the same network as this PC. If the page doesn't load, Windows Firewall is probably blocking port <span id="pPort"></span>.</p></details>
+
+<details class="card" id="d-nc"><summary>NiteCrawler and serial link</summary>
+<table id="nct"></table>
+<form id="pf" class="ctl" autocomplete="off" style="margin-top:8px"><label>Serial port <select name="port" id="ports"><option value="auto">Find automatically</option></select></label>
+<div class="bar" style="margin:8px 0 0"><button id="pSave">Use this port</button></div></form>
+<p class="msg" id="pMsg" aria-live="polite"></p>
+<p class="mut" style="font-size:12px;margin-bottom:0">"Find automatically" asks each USB serial port for the NiteCrawler's model (PF#). Pick the port by hand if another device minds being asked.</p></details>
+</div>
+</main>

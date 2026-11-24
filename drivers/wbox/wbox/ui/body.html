@@ -1,0 +1,122 @@
+<!-- WBPlus stock Alpaca status page (device-web-ui kit). Built into one page by wbstock/webpage.py. -->
+<main class="cols top">
+<div class="pinwrap" id="pinwrap" aria-hidden="true"><div class="pinbar" id="pinbar"></div></div>
+<header><div><h1 id="name">WandererBox Plus V3</h1><div class="mut" id="sub"></div></div>
+<div class="hright"><span id="link" class="pill" title="Serial link between this PC and the box">…</span>
+<span id="client" class="pill" title="An ASCOM Alpaca client (your imaging program, for example) has connected the Switch or ObservingConditions device">…</span>
+<span class="pill warn" id="upd" style="display:none;cursor:pointer" onclick="location.reload()" title="The service runs a different version than this page came from">New version: reload</span>
+<button class="hbtn" id="night" title="Red night mode (keeps dark adaptation)">🌙</button></div></header>
+
+<div class="grid" id="tiles"></div>
+
+<section class="card"><div class="bar"><span class="seg" id="ranges"></span><select id="panel" aria-label="Chart"></select><span class="sp"></span>
+<button id="zr" style="display:none" title="Show the whole range again (or double-click the chart)">Reset zoom</button><button id="brng" class="rng" title="Each step's lowest to highest reading, as a band">Range: auto</button><button id="bpng" title="Save the chart as shown as a PNG image">PNG</button><button id="bcsv" title="The samples in view as CSV">CSV</button></div>
+<div class="cw"><canvas id="ch"></canvas><div class="tip" id="tip"></div></div>
+<div class="lg" id="cust" style="display:none;margin:6px 0 0"></div><div class="lg" id="lg"></div><div class="mut" id="chNote" style="font-size:12px;margin-top:4px"></div>
+<p class="note" style="margin:6px 0 0">Hover, or slide a finger, for values; click or tap to pin. Zoom: drag sideways, or double-tap and slide; double-click or double-tap resets.
+1 s detail for the last 10 minutes, 10-second averages for 24 hours (the band: each step's lowest to highest reading, drawn when one or two values are on; Range switches it). 1-minute averages with their lowest and highest are also saved on this PC, one file per day: the hub's Overview shows them after a restart.</p></section>
+
+<section class="card" id="ctl"><h2>Controls</h2>
+<div class="lock" id="cLock" aria-live="polite"><span id="cLockTxt"></span><button type="button" id="cUnlock"></button></div>
+<form id="cf" class="ctl" autocomplete="off"><div class="cgrid">
+<div class="cgrp"><h3>Power</h3><div id="cOut"></div>
+<label title="The stock firmware sets DC2 in one step. While DC2 is off, a new voltage is only stored">DC2 voltage <span class="nu"><input name="v2" type="number" step="0.1" inputmode="decimal"><i class="u">V</i></span></label>
+<div class="crow pref" id="cAskRow" title="Remembered by this browser only: the PC and a phone can differ"><label for="cAsk">Ask before switching off</label><input type="checkbox" id="cAsk"></div></div>
+<div class="cgrp"><h3>Dew heater</h3>
+<label>Mode <select name="v4"><option value="0">off</option><option value="1">manual</option><option value="2">constant temperature</option><option value="3">dew point offset</option><option value="4">DC3 (12 V output)</option></select></label>
+<div class="crow" id="dc3Row" style="display:none" title="Mode 4: the DC3 jack as a plain 12 V output"><span>DC3 output</span><span class="seg" id="dc3Seg"><button type="button" data-v="1">On</button><button type="button" data-v="0">Off</button></span></div>
+<label id="manRow" title="Used in manual mode">Manual power <span class="nu"><input name="v5" type="number" step="1" inputmode="numeric"><i class="u">%</i></span></label>
+<label title="Lens temperature held in constant-temperature mode">Target temperature <span class="nu"><input name="v6" type="number" step="0.5" inputmode="decimal"><i class="u">°C</i></span></label>
+<label title="Degrees above the dew point held in dew-point mode">Dew point offset <span class="nu"><input name="v7" type="number" step="0.5" inputmode="decimal"><i class="u">°C</i></span></label></div></div>
+<div class="bar" style="margin:8px 0 0"><button id="cApply">Apply</button><button type="button" id="cRevert" class="d" style="display:none">Undo changes</button></div></form>
+<p class="msg" id="cMsg" aria-live="polite"></p>
+<p class="note" style="margin:6px 0 0">The same switches your Alpaca programs see. Each change waits until the box confirms it (about 0.1 s with the WSM firmware, 1 to 4 s with stock). Every command is an EEPROM write in the box.</p></section>
+
+<!-- From 1000 px: the night-time cards on the left, settings and diagnostics in this side column (kit "cols"). -->
+<div id="side">
+<p class="note" id="rNote" style="display:none;margin:0">Settings are read-only here: change them on the PC the box is plugged into. The Controls work everywhere.</p>
+<details class="card" id="d-dew"><summary>Dew controller</summary>
+<form id="tf" class="ctl" autocomplete="off"><div class="cgrid">
+<div class="cgrp"><h3>Power</h3>
+<label title="Ceiling for every mode: manual power and fallback power can't go above it">Power limit <span class="nu"><input name="max_pct" type="number" step="any" inputmode="decimal"><i class="u">%</i></span></label>
+<label title="Used in the automatic modes while the lens probe (or, in dew-point mode, the DHT22) is missing. Never more than the power limit">Fallback power <span class="nu"><input name="fallback_pct" type="number" step="any" inputmode="decimal"><i class="u">%</i></span></label>
+<label title="Smaller automatic changes are not sent, to spare the box's EEPROM">Smallest change sent <span class="nu"><input name="min_step_pct" type="number" step="any" inputmode="decimal"><i class="u">%</i></span></label>
+<label title="At most one automatic command per interval. 60 s is about 600 EEPROM writes in a 10-hour night">Command interval <span class="nu"><input name="min_interval_s" type="number" step="any" inputmode="decimal"><i class="u">s</i></span></label></div>
+<div class="cgrp"><h3>Regulation</h3>
+<label title="Heater power per degree the lens is below its target">Proportional gain <span class="nu"><input name="kp" type="number" step="any" inputmode="decimal"><i class="u">%/°C</i></span></label>
+<label title="How fast a lasting shortfall builds up extra power">Integral gain <span class="nu"><input name="ki" type="number" step="any" inputmode="decimal"><i class="u">%/°C·s</i></span></label>
+<label title="How often the controller recalculates">Control period <span class="nu"><input name="period_s" type="number" step="any" inputmode="decimal"><i class="u">s</i></span></label></div></div>
+<div class="bar" style="margin:8px 0 0"><button id="tSave">Save</button><button type="button" id="tReset" class="d">Reset to defaults</button></div></form>
+<p class="msg" id="tMsg" aria-live="polite"></p>
+<p class="note" style="margin:6px 0 0">The automatic modes (constant temperature, dew point offset) run on this PC: the stock firmware only knows a fixed
+heater power. Changes apply at once. These settings aren't part of the Alpaca switches, so Alpaca programs can't change them and they aren't locked.</p></details>
+
+<details class="card" id="d-probes"><summary>Temperature probes</summary>
+<form id="prf" class="ctl" autocomplete="off">
+<div class="crow pref" title="The DS18B20 on the dew heater jack. Needed by the constant-temperature and dew point modes"><label for="pLens">Lens probe (DS18B20) used</label><input type="checkbox" id="pLens"></div>
+<div class="crow pref" title="The DHT22 inside the box: ambient temperature, humidity and dew point. Needed by the dew point mode"><label for="pAmb">Ambient sensor (DHT22) used</label><input type="checkbox" id="pAmb"></div></form>
+<p class="msg" id="prMsg" aria-live="polite"></p>
+<p class="mut" style="font-size:12px;margin-bottom:0">A probe that isn't used shows as "not used" instead of MISSING, its Alpaca gauges are left out,
+and without the DHT22 the ObservingConditions device reports no temperature, humidity or dew point. The dew modes that need it can't be picked.
+Applies at once; reconnect the Switch in the Alpaca program to see the change.</p></details>
+
+<details class="card" id="d-alpaca"><summary>ASCOM Alpaca</summary>
+<div class="cgrp"><h3>Devices</h3>
+<p style="margin:0 0 6px">Alpaca clients find this service on their own (discovery on UDP 32227). It offers:</p>
+<table><tr><td>Switch #0</td><td>USB, DC2 (on/off and voltage), DC4-6, dew heater (mode, manual power, target, offset), and the gauges chosen below</td></tr>
+<tr><td>ObservingConditions #0</td><td>Temperature, humidity and dew point from the box's DHT22</td></tr></table>
+<form id="nf" class="ctl" autocomplete="off" style="margin-top:6px">
+<label title="Shown in the Alpaca programs' device lists. Change it when other Alpaca devices on the network (or a second box) have the same name">Name in Alpaca programs <input name="name" type="text" maxlength="40" spellcheck="false"></label>
+<div class="bar" style="margin:8px 0 0"><button id="nSave">Save name</button><button type="button" id="nReset" class="d">Default name</button></div></form>
+<p class="msg" id="nMsg" aria-live="polite"></p>
+<p class="mut" style="font-size:12px;margin:0">The two devices are named after it: "<span id="nOut"></span> outputs" and
+"<span id="nSen"></span> sensors". Their unique IDs don't change. Alpaca programs show the new name the next time they
+look for devices or connect.</p>
+</div>
+<div class="cgrp"><h3>Gauges (Switch ids 8 and up)</h3>
+<form method="post" action="/setup/gauges" id="gf"><div class="gauges" id="gauges"></div>
+<div class="ctl" id="gMiss" style="margin:8px 0 4px">
+<label title="Every Alpaca program reads this value, and ': MISSING' is added to the gauge's name. A missing probe's gauges answer instead of reporting an error because some programs (NINA, for one) keep a gauge's old number when a read fails, and can't connect if one fails while they connect">While a probe is missing, gauges read <select name="missing">
+<option value="hold">last good value</option><option value="minimum">gauge minimum</option><option value="value">fixed value</option></select></label>
+<label title="Kept inside each gauge's range (humidity 0 to 100, for example). Also used by 'the last good value' before the probe has given a reading">Fixed value <span class="nu"><input name="missing_value" type="number" step="any" inputmode="decimal"></span></label></div>
+<div class="bar"><button>Save gauges</button><button name="reset" value="1" formnovalidate>Reset to defaults</button></div></form>
+<p class="mut" style="font-size:12px;margin-bottom:0">Read-only values on the Alpaca Switch device, for any Alpaca program (usually in its Switch panel). Reconnect the Switch in the program to see the change.
+While a probe is missing, its gauges are named e.g. "Lens temperature: MISSING" (NINA, for one, updates names as it polls). A fixed value is kept inside each gauge's range.
+The writable switches (ids 0-7) never move; the gauges follow from id 8 in the order above.</p>
+</div>
+<p class="mut" id="aNote" style="font-size:12px;margin-bottom:0"></p></details>
+
+<details class="card" id="d-phone"><summary>Open on a phone</summary>
+<p id="pNow" style="margin:0 0 6px"></p>
+<div id="pQr"></div>
+<p class="mut" style="font-size:12px;margin-bottom:0">The phone must be on the same network as this PC. If the page doesn't load, Windows Firewall is probably blocking it:
+re-run the installer and tick "Allow phones and Alpaca programs on other computers to reach it".</p></details>
+
+<details class="card" id="d-history"><summary>History files</summary>
+<p id="hNow" style="margin:0 0 6px"></p>
+<div class="bar"><button type="button" id="hZip" title="Downloads every daily CSV file as one zip">Download history</button>
+<span id="hLocal" style="display:none"><button type="button" id="hOpen" title="Opens the folder with the daily CSV files in Explorer on this PC">Open data folder</button>
+<button type="button" id="hDel" title="Deletes every history file and empties the chart. Settings and the diagnostic log are kept">Delete history</button></span></div>
+<p class="msg" id="hMsg" aria-live="polite" style="margin:0 0 6px"></p>
+<form id="hf"><label>Keep history for <span><input name="days" type="number" min="1" max="365" step="1" style="width:5em"> days</span></label>
+<button id="hSave">Save</button></form>
+<p class="mut" id="hNote" style="font-size:12px;margin-bottom:0"></p></details>
+
+<details class="card" id="d-box"><summary>Box and serial link</summary>
+<div class="cgrp"><h3>Box</h3><table id="boxt"></table></div>
+<div class="cgrp"><h3>Serial port</h3>
+<form method="post" action="/setup/port" id="pf"><label>Box serial port <select name="port" id="ports"><option value="auto">Find automatically</option></select></label>
+<button>Use this port</button></form>
+<p class="mut" style="font-size:12px;margin-bottom:0">"Find automatically" listens on each COM port for the box's status line. Pick a port by hand if another device confuses the search.</p>
+</div>
+<div class="cgrp" id="wGrp" style="display:none"><h3>WSM firmware</h3>
+<form id="wf" class="ctl" autocomplete="off" novalidate>
+<label title="The box refuses any DC2 voltage above this, from every program (the hub, Alpaca programs, the maker's own software). Set it to what the device on DC2 is rated for">DC2 ceiling <span class="nu"><input name="dc2_max" type="number" step="0.1" min="5" max="13.2" inputmode="decimal"><i class="u">V</i></span></label>
+<label title="How fast DC2 rises when it's switched on or set higher. The box's firmware allows 0.1 to 20 V/s">DC2 ramp <span class="nu"><input name="dc2_slew" type="number" step="0.1" min="0.1" max="20" inputmode="decimal"><i class="u">V/s</i></span></label>
+<div class="bar" style="margin:8px 0 0"><button id="wSave">Save</button></div></form>
+<p class="msg" id="wMsg" aria-live="polite"></p>
+<p class="mut" style="font-size:12px;margin-bottom:0">Both are stored in the box, so they apply whatever program switches DC2. The ceiling is a hard limit:
+set it to the rating of the camera on DC2 (8.4 V for a dummy battery, for example); a lower ceiling also lowers a setpoint above it. A slow ramp keeps the
+inrush into DC2's load small; 5 V/s reaches 12 V in 2.4 s, 20 V/s in 0.6 s. Raise it if a camera complains about a low battery while it starts.</p></div></details>
+</div>
+</main>

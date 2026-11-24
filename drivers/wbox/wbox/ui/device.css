@@ -1,0 +1,21 @@
+.gauges{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));column-gap:16px;margin:0 0 8px}
+.qr{display:block;background:#fff;border-radius:6px;padding:0;margin:4px 0 8px;image-rendering:pixelated}
+:root[data-night] .qr{opacity:.55}
+#d-history .bar{margin:0 0 6px}
+#hLocal{display:inline-flex;flex-wrap:wrap;gap:6px}
+/* Controls and Dew controller use the kit v5/v6 control-card classes (.ctl, .nu, .u, .crow, .pref, .cgrid, .lock, .msg). */
+
+
+/* Pinned bar: the extra tile values only from 760 px, so phones keep one slim line */
+.pinbar{font-variant-numeric:tabular-nums}.pinbar>span{display:inline-block;white-space:nowrap}  /* fixed widths: pinFill */
+.pinbar .w{display:none}@media (min-width:760px){.pinbar .w{display:inline-block}}
+
+/* Outputs tile: 2x2 grid of on/off indicators in place of the big number (outGrid) */
+.tile .v .og{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:3px 8px;font-size:13px;font-weight:500;line-height:1.35;margin-top:3px}
+.og>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.og .off{color:var(--mut)}
+.og i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;vertical-align:-0.5px;box-sizing:border-box}
+.og .on i{background:var(--ok)}.og .off i{border:2px solid var(--bad)}
+/* Box card, WSM rows that can grow (faults, restarts): two lines kept, so the card never moves under the reader */
+#boxt tr.h1 td:last-child,#boxt tr.h2 td:last-child{max-width:0;width:100%}
+#boxt .ln{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#boxt .sm{padding:0 8px;min-height:0;height:1lh;line-height:1;font-size:11px;margin-left:6px;vertical-align:top;box-sizing:border-box}
