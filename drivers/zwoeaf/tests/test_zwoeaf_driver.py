@@ -152,6 +152,35 @@ class InstanceTests(unittest.TestCase):
         self.assertEqual(self.alpaca("GET", "position")["Value"], 0)
         self.assertEqual(self.call("PUT", "/api/v1/focuser/0/move")[0], 400, "no Position")
 
+    def test_a_move_ending_between_the_polls_two_reads(self):
+        # 2026-11-24, ConformU through the installed hub: each SDK call takes up to 1.7 s on a real EAF, and the poll
+        # read the position before IsMoving, so a move ending between the two left "not moving at 7506" for 7570.
+        class Finishing:
+            """The move ends during whichever of the two reads comes first."""
+            def __init__(self, real):
+                self.real, self.done = real, False
+
+            def is_moving(self, id_):
+                self.done = True
+                return False, False
+
+            def position(self, id_):
+                was, self.done = self.done, True
+                return 7570 if was else 7506
+
+            def __getattr__(self, k):
+                return getattr(self.real, k)
+
+        self.inst._stop.set()                     # no polling thread: only the poll below
+        time.sleep(0.2)
+        self.inst.sdk = Finishing(self.inst.sdk)
+        with self.inst._lock:
+            self.inst.move = {"from": 5600, "target": 7570, "t0": time.monotonic() - 5.0, "by": "Alpaca"}
+            self.inst.moving_flag = True
+        self.inst.poll()
+        self.assertEqual((self.inst.position, self.inst.moving_flag), (7570, False))
+        self.assertEqual(self.inst.last_move["text"], "reached 7570")
+
     def test_halt(self):
         self.connect()
         self.sim.speed = 500.0

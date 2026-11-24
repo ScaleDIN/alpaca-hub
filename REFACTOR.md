@@ -669,6 +669,9 @@ that process (the driver always lists first). `EAFGetProperty`'s MaxStep stayed 
 which `EAFGetMaxStep` reports (the driver reads that one). With the user's OK a one-off script, not the driver, set
 the position to 0 at the lens's infinity end (`EAFResetPostion`) and MaxStep to 19700 (its close-focus end), so
 ConformU's moves to 0 and MaxStep stay on the lens.
+On a USB hub with one transaction translator (the user's, `1A40:0101`, Terminus FE1.1) shared with an open FTDI
+serial adapter (an Optec Gemini) every EAF SDK call took 0.3-0.6 s, Stop up to 4 s, with ZWO's ASCOM driver as
+well; on another hub, or with that port closed, 5-8 ms. Worth a line in the EAF's help if users report a slow EAF.
 
 ### EFW: Alpaca `FilterWheel` → ZWO EFW SDK
 | Alpaca | EFW SDK | Notes |

@@ -4,6 +4,14 @@ What changed in each release of the Alpaca Hub and its drivers. Newest first. Ea
 `## <Hub | driver key> <version> (<date>)`: `packaging/build.py release` takes each new version's notes from here
 for the hub's update check, and refuses a release whose new versions have no entry.
 
+## zwoeaf 0.1.1 (2026-11-24)
+- At the end of a move an imaging program could briefly read a position short of the target (for example 7506 for
+  7570) while the focuser was already reported stopped, when the focuser answers slowly. It now always reads the
+  final position.
+- A move starts sooner: one call to the focuser instead of two.
+- If the EAF answers slowly (hundreds of milliseconds a call), check that it isn't on the same USB hub as a USB
+  serial adapter (FTDI) that is in use: moving it to another port fixed that on a test setup.
+
 ## Hub 0.4.1 (2026-11-24)
 - A hub started for testing with only some drivers (`--drivers`) now keeps to them when one of its driver
   programs restarts; before, it took every other device it could find too.

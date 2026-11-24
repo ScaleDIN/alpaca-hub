@@ -251,8 +251,11 @@ class EafInstance(Instance):
         if id_ is None:
             return
         try:
-            pos = self.sdk.position(id_)
+            # IsMoving first, then the position: read the other way round, a move ending between the two calls (each
+            # takes 0.15 to 1.7 s on a real EAF) left "not moving" with a position short of the target, which a
+            # client read as the move's end (ConformU on 2026-11-24: 7506 for 7570).
             moving, hand = self.sdk.is_moving(id_)
+            pos = self.sdk.position(id_)
             code = None
             if self.codes is not False:
                 code = self.sdk.motor_code(id_)
@@ -331,7 +334,9 @@ class EafInstance(Instance):
         if self.hand:
             raise AlpacaError(INVALID_OPERATION, "The hand controller is moving the focuser")
         try:
-            pos = self.sdk.position(self.id)
+            # The last polled position, not another read: each SDK call can take a second on a real EAF, and an
+            # Alpaca Move should return within one (ConformU).
+            pos = self.position if self.position is not None else self.sdk.position(self.id)
             self.sdk.move(self.id, target)
         except EafError as e:
             raise AlpacaError(DRIVER_ERROR, str(e))
