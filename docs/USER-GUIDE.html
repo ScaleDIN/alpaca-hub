@@ -77,6 +77,8 @@ other computers; if they still can't reach it once the network is Private, Start
 shows its last log lines and <b>Try again</b>. A newer version that waits for programs to disconnect shows
 <b>Switch now</b>.</li>
 <li><b>Serial ports</b> (fold it open): every COM port and what the hub made of it. <b>Ignore</b> keeps the hub away from a port for good, for example a meter's USB cable or a device another program uses: never opened, never probed, also after a restart. A port whose USB chip has a serial number stays ignored on any COM number. <b>Stop ignoring</b> undoes it.</li>
+<li><b>Updates</b>: a line at the top when there is a new version, and the setting at the bottom (see
+<a href="#updates">Updates</a>).</li>
 </ul>
 
 <h2 id="programs">Alpaca programs</h2>
@@ -88,13 +90,33 @@ knows classic ASCOM drivers</b> needs the ASCOM Platform (6.5 or later) on the P
 ASCOM Chooser, turn on Alpaca discovery and pick the hub's device, and the Platform makes it look like an ordinary
 ASCOM driver to the program.</p>
 
-<h2>Updating and removing drivers</h2>
+<h2 id="updates">Updates</h2>
+<p>Once a day (and about a minute after it starts, if the last look was a day ago) the hub reads the list of published
+versions online. When there is a newer hub, or a newer version of a driver installed here, a line at the top of the
+Overview says so; open it to see what's new in each.</p>
 <ul>
-<li><b>Update</b>: run the newer driver installer. The hub switches to it within seconds if no program is connected to
-that driver's devices; otherwise when they disconnect, or when you press <b>Switch now</b>. The devices keep their tabs,
-Alpaca numbers and UniqueIDs.</li>
-<li><b>Remove</b>: Windows Settings → Apps → "Alpaca Hub driver: …". The hub stops the driver and frees its ports.</li>
-<li>Removing the hub leaves the drivers installed.</li>
+<li><b>What it sends</b>: one request for the list, with nothing in it but the hub's version number. No device,
+computer or user details.</li>
+<li><b>Turning it off</b>: untick <b>Check for updates online</b> at the bottom of the Overview. The hub then sends
+nothing at all. <b>Check now</b> looks straight away.</li>
+<li><b>Install</b> (on the hub's PC only): the hub downloads the installer, checks it against the published list (its
+size and SHA-256) and runs it; Windows asks for administrator rights. A file that doesn't match is deleted, never
+run. On a phone or another PC the Overview shows the updates but installs nothing.</li>
+<li><b>A driver update</b> takes over by itself within seconds if no program is connected to that driver's devices;
+otherwise when they disconnect, or when you press <b>Switch now</b> under Drivers. The devices keep their tabs, Alpaca
+numbers and UniqueIDs.</li>
+<li><b>A hub update</b> stops the hub, updates it and starts it again; the page reloads when it's back. Connected
+programs lose their devices for about a minute, so Install asks first. When both are new, install the hub first: a
+driver that needs a newer hub says so and has no Install button until then.</li>
+<li><b>By hand</b>: download the installers from the project's
+<a href="https://github.com/ScaleDIN/alpaca-hub/releases/latest">releases page</a> and run them, hub first. Settings,
+device numbers and history are kept.</li>
+</ul>
+
+<h2>Removing</h2>
+<ul>
+<li><b>A driver</b>: Windows Settings → Apps → "Alpaca Hub driver: …". The hub stops the driver and frees its ports.</li>
+<li><b>The hub</b>: Windows Settings → Apps → "Alpaca Hub". Removing the hub leaves the drivers installed.</li>
 </ul>
 
 <h2>When something doesn't work</h2>
