@@ -174,7 +174,8 @@ def main(argv=None):
     done = threading.Event()
     running = None if a.simulate else os.path.join(programdata_dir(), "running.json")
     hub = Hub(chosen, config_dir=config_dir, bind=a.bind, http_port=a.http_port, on_shutdown=done.set,
-              running_file=running, update_feed=a.update_feed, **kw)
+              running_file=running, update_feed=a.update_feed,
+              only={d.key for d in chosen} if a.drivers else None, **kw)
     try:
         hub.start()
     except OSError as e:

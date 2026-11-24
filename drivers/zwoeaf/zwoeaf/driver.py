@@ -319,9 +319,14 @@ class EafInstance(Instance):
         if self.id is None:
             raise AlpacaError(DRIVER_ERROR, f"The EAF is {self.lost or 'not available'}")
 
-    def goto(self, target, by):
+    def goto(self, target, by, clamp=False):
+        """clamp: a target outside 0 to max step goes to the nearest end (Alpaca clients: ConformU's "Move - Below 0"
+        and "Move - Above MaxStep" expect that, not an error); without it (the page) such a target is refused."""
         self.ready()
-        if not 0 <= target <= (self.max_step or 0):
+        top = self.max_step or 0
+        if clamp:
+            target = min(max(target, 0), top)
+        elif not 0 <= target <= top:
             raise AlpacaError(INVALID_VALUE, f"Position {target} is outside 0 to {self.max_step}")
         if self.hand:
             raise AlpacaError(INVALID_OPERATION, "The hand controller is moving the focuser")
@@ -468,7 +473,7 @@ class EafFocuser(AlpacaDevice):
             pos = int(str(p.get("position", "")).strip())
         except ValueError:
             raise BadRequest("Missing or invalid Position")
-        self.inst.goto(pos, "Alpaca")
+        self.inst.goto(pos, "Alpaca", clamp=True)
         return None
 
 

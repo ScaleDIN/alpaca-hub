@@ -24,7 +24,7 @@ async function tick() {
   $('tiles').innerHTML = [
     K.tile('Position', steps(s.position), s.max_step != null ? `of ${steps(s.max_step)} steps` : '', ''),
     K.tile('State', esc(s.state), s.last_move && s.last_move.text != s.state ? esc(s.last_move.text) : '', st),
-    K.tile('Temperature', temp(s.temperature), s.temperature == null ? 'no reading' : 'sensor in the focuser'),
+    K.tile('Temperature', temp(s.temperature), s.temperature == null ? 'no reading' : 'probe, else inside the EAF'),   // the SDK reads the probe when one is plugged in (seen 2026-11-24) and doesn't say which
   ].join('');
   $('pinbar').innerHTML = `<span>${esc(s.name)} <b>${steps(s.position)}</b></span><span class="${st}">${esc(s.state)}</span><span>${temp(s.temperature)}</span>`;
   $('dt').innerHTML = row('Model', esc(s.model || '—') + (s.kind ? ` <span class="mut">· ${esc(s.kind)}</span>` : '')) +

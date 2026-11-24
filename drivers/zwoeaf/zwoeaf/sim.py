@@ -10,7 +10,7 @@ import time
 
 from .eaf import CLOSED, GENERAL_ERROR, INVALID_ID, INVALID_VALUE, NOT_SUPPORTED, REMOVED, EafError
 
-SPEED = 400.0            # steps/s (guess)
+SPEED = 370.0            # steps/s, as a real EAF moved (2026-11-24)
 MAX_STEP = 60000         # the focuser's max step (guess)
 
 

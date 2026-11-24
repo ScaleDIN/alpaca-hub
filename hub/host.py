@@ -110,7 +110,10 @@ class HubSettings:
 class Hub:
     def __init__(self, drivers, config_dir=None, bind=None, http_port=None, port_lister=list_ports,
                  opener=open_port, simulated=False, use_standalone_settings=True, scan_s=SCAN_S, listen_s=LISTEN_S, identify_s=None,
-                 supervisor=None, on_shutdown=None, running_file=None, update_feed=None, usb_lister=None):
+                 supervisor=None, on_shutdown=None, running_file=None, update_feed=None, usb_lister=None, only=None):
+        # only: the driver keys `--drivers` allows (None: all). Kept here, because the drivers change while running
+        # (set_drivers, also whenever a driver process comes back) and those may never bring in another driver.
+        self.only = set(only) if only is not None else None
         self.on_shutdown = on_shutdown        # POST /hub/shutdown from this PC (hub --stop) calls it
         self.running_file = running_file      # where the hub says it runs (port, pid) for driver installers
         self.supervisor = supervisor          # hub/supervisor.py: the driver processes (None: drivers run in here)
@@ -118,7 +121,7 @@ class Hub:
             supervisor.bind(self)
         self._banned = {}                     # key -> why: refused while running (it wrote to a never_probe port)
         self._clients = {}                    # slug -> {"conn": {(type, number)}, "seen": time}: Alpaca clients
-        self.drivers, self.refused = self._accept(drivers)
+        self.drivers, self.refused = self._accept(self._allowed(drivers))
         self._never = self._never_map(self.drivers)   # (vid, pid) -> key of the driver listing it in never_probe
         self._ctx = {d.key: HubContext(self, d) for d in self.drivers}
         self.config_dir = config_dir or default_config_dir()
@@ -184,10 +187,13 @@ class Hub:
                 never.setdefault(usb, d.key)
         return never
 
+    def _allowed(self, drivers):
+        return [d for d in drivers if self.only is None or d.key in self.only]
+
     def set_drivers(self, drivers):
         """The drivers changed while running (installed, updated, uninstalled, turned on or off). Devices whose
         driver is no longer in the list are stopped and their ports released and looked at again."""
-        drivers = list(drivers)
+        drivers = self._allowed(drivers)
         keep = {id(d) for d in drivers}
         with self._lock:
             for slug, inst in list(self.instances.items()):
@@ -1200,6 +1206,28 @@ def _chart_page():
     return _chart[0]
 
 
+class _Counted:
+    """A request's input, counting what is read of it (_Handler._drain)."""
+    def __init__(self, f):
+        self.f, self.n = f, 0
+
+    def read(self, size=-1):
+        b = self.f.read(size)
+        self.n += len(b)
+        return b
+
+    def readline(self, *a):
+        b = self.f.readline(*a)
+        self.n += len(b)
+        return b
+
+    def __getattr__(self, k):
+        return getattr(self.f, k)
+
+
+DRAIN_MAX = 1 << 20   # an unread request body up to this is read before replying; a bigger one closes the connection
+
+
 class _Handler(BaseHTTPRequestHandler):
     srv: Hub
     protocol_version = "HTTP/1.1"
@@ -1208,7 +1236,32 @@ class _Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         log.debug("%s %s", self.address_string(), fmt % args)
 
+    def _count_body(self):
+        """Start counting this request's body (each request on a kept-alive connection)."""
+        self.rfile = _Counted(getattr(self.rfile, "f", self.rfile))
+        try:
+            self._body_len = max(0, int(self.headers.get("Content-Length") or 0))
+        except ValueError:
+            self._body_len = 0
+
+    def _drain(self):
+        """Read what is left of the request body before replying. A reply sent with the body unread (a 403 before
+        the form is parsed) left it in the kept-alive connection: Windows then reset the connection (WinError
+        10053 at the client, now and then, in the tests) or the next request read the leftover body as its own."""
+        left = getattr(self, "_body_len", 0) - getattr(self.rfile, "n", 0)
+        if left <= 0:
+            return
+        if left > DRAIN_MAX:
+            self.close_connection = True
+            return
+        while left > 0:
+            b = self.rfile.read(min(left, 65536))
+            if not b:
+                break
+            left -= len(b)
+
     def _reply(self, code, body, ctype="application/json", extra=None):
+        self._drain()
         data = body if isinstance(body, bytes) else body.encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", ctype)
@@ -1249,6 +1302,7 @@ class _Handler(BaseHTTPRequestHandler):
         self._route()
 
     def _route(self):
+        self._count_body()
         try:
             u = urllib.parse.urlsplit(self.path)
             path = u.path

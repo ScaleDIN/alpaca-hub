@@ -143,8 +143,13 @@ class InstanceTests(unittest.TestCase):
         self.assertTrue(wait_for(lambda: not self.alpaca("GET", "ismoving")["Value"]))
         self.assertEqual(self.alpaca("GET", "position")["Value"], 3000)
         self.assertEqual(self.status()["last_move"]["text"], "reached 3000")
-        self.assertEqual(self.alpaca("PUT", "move", Position="20001")["ErrorNumber"], 0x401, "beyond the max step")
-        self.assertEqual(self.alpaca("PUT", "move", Position="-1")["ErrorNumber"], 0x401)
+        # beyond either end: to that end, no error (ConformU's "Move - Above MaxStep" / "Move - Below 0")
+        self.assertEqual(self.alpaca("PUT", "move", Position="20010")["ErrorNumber"], 0)
+        self.assertTrue(wait_for(lambda: not self.alpaca("GET", "ismoving")["Value"]))
+        self.assertEqual(self.alpaca("GET", "position")["Value"], 20000)
+        self.assertEqual(self.alpaca("PUT", "move", Position="-10")["ErrorNumber"], 0)
+        self.assertTrue(wait_for(lambda: not self.alpaca("GET", "ismoving")["Value"]))
+        self.assertEqual(self.alpaca("GET", "position")["Value"], 0)
         self.assertEqual(self.call("PUT", "/api/v1/focuser/0/move")[0], 400, "no Position")
 
     def test_halt(self):

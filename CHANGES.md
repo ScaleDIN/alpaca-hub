@@ -4,6 +4,23 @@ What changed in each release of the Alpaca Hub and its drivers. Newest first. Ea
 `## <Hub | driver key> <version> (<date>)`: `packaging/build.py release` takes each new version's notes from here
 for the hub's update check, and refuses a release whose new versions have no entry.
 
+## Hub 0.4.1 (2026-11-24)
+- A hub started for testing with only some drivers (`--drivers`) now keeps to them when one of its driver
+  programs restarts; before, it took every other device it could find too.
+- A request the hub refused (for example one not sent from its own page) could leave the connection unusable for
+  the next request from the same program; the hub now reads it to the end first.
+
+## zwoeaf 0.1.0 (2026-11-24)
+- New driver: the ZWO EAF focuser as an Alpaca Focuser, through ZWO's own EAF SDK (1.8.5). Tried on a standard EAF
+  (firmware 3.2.2): ConformU's Focuser test passes. The EAF 5V uses the same SDK but hasn't been tried yet.
+- Its page shows the position, temperature (the probe when plugged in, else the EAF's own) and the settings stored
+  in the focuser (read-only, set with ZWO's software), with Go to, Step and Halt, locked while an imaging program is
+  connected.
+- An imaging program asking for a position beyond either end gets that end.
+- A motor stall reported by the focuser (E5, where its firmware has it) and a move that doesn't finish in time are
+  shown, and the second is stopped.
+- Needs Alpaca Hub 0.4.0 or newer.
+
 ## Hub 0.4.0 (2026-11-24)
 - The device tabs keep the same order, by device type and unit, whatever COM port each device is on and whichever
   is found first. Drag a tab to move it, or press Ctrl+Shift+← / → on it: the hub keeps that order for every
@@ -11,15 +28,6 @@ for the hub's update check, and refuses a release whose new versions have no ent
   order.
 - The hub can run drivers for USB devices that are reached through their maker's own software rather than a serial
   port (for the coming ZWO EAF driver).
-
-## zwoeaf 0.1.0 (not yet released)
-- New driver: the ZWO EAF focuser (the standard EAF and the EAF 5V) as an Alpaca Focuser, through ZWO's own EAF SDK.
-  Not yet tried on a real focuser.
-- Its page shows the position, temperature and the settings stored in the focuser (read-only), with Go to, Step and
-  Halt, locked while an imaging program is connected.
-- A motor stall reported by the focuser (E5), and a move that doesn't finish in time, are shown, and the second is
-  stopped.
-- Needs the hub's support for USB devices opened through a maker's SDK (hub 0.4.0).
 
 ## nitecrawler 1.0.3 (2026-11-24)
 - The page names the focuser, rotator and aux motor by the numbers your imaging program sees (Focuser #2 …), not

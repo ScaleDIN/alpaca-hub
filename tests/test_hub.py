@@ -210,6 +210,24 @@ class HubTests(unittest.TestCase):
         self.assertNotIn("COM7", self.bench.opened, "ports with no matching USB IDs are never opened")
         self.assertNotIn("COM5", [i.port.device for i in h.instances.values()], "a CH340 that is neither box nor panel")
 
+    def test_drivers_limit_survives_a_driver_change(self):
+        # 2026-11-24: a hub started with --drivers zwoeaf took the box after its EAF driver process restarted (the
+        # supervisor's drivers_changed handed it every driver) and the box driver set the dew output.
+        self.bench.add_box("COM8")
+        self.bench.add_nc("COM10", "25905")
+        drivers = all_drivers()
+        h = H.Hub([d for d in drivers if d.key == "nitecrawler"], config_dir=self.dir, bind="127.0.0.1",
+                  http_port=0, port_lister=self.bench.lister, opener=self.bench.opener, simulated=True,
+                  use_standalone_settings=False, listen_s=0.2, only={"nitecrawler"})
+        h.start(scan=False)
+        self.hubs.append(h)
+        h.scan_once()
+        h.set_drivers(drivers)                  # what a driver process coming back does
+        h.scan_once()
+        self.assertEqual([d.key for d in h.drivers], ["nitecrawler"])
+        self.assertEqual([i.port.device for i in h.instances.values()], ["COM10"])
+        self.assertNotIn("COM8", self.bench.opened, "the box's port is never opened")
+
     def test_ch340_ports_open_with_dtr_rts_on(self):
         # 2026-11-20: the panel only talked with DTR/RTS on, as Empire and INDI open it; the NiteCrawler keeps them off.
         self.bench.add_box("COM8")
@@ -227,6 +245,26 @@ class HubTests(unittest.TestCase):
         self.assertTrue(self.bench.lines[before:])
         self.assertEqual(set(self.bench.lines[before:]), {("COM8", True)})
         self.assertEqual(self.bench.written, [])
+
+    def test_a_refused_post_leaves_the_connection_clean(self):
+        # A 403 sent before the body was read left the body in the kept-alive connection: the next request read it
+        # as its own start, and on Windows the client now and then got WinError 10053 (the test runs' rare failures).
+        import http.client
+        h = self.new_hub()
+        c = http.client.HTTPConnection("127.0.0.1", h.port, timeout=10)
+        try:
+            for _ in range(3):
+                c.request("POST", "/hub/tab-order", body=b"order=" + b"x," * 2000,
+                          headers={"Content-Type": "application/x-www-form-urlencoded"})
+                r = c.getresponse()
+                r.read()
+                self.assertEqual(r.status, 403)
+                c.request("GET", "/hub.json")
+                r = c.getresponse()
+                self.assertEqual(r.status, 200, "the same connection still works")
+                json.loads(r.read())
+        finally:
+            c.close()
 
     # ---------------------------------------------------------------- the tabs' order
     def test_tab_order_is_stable_and_saved(self):

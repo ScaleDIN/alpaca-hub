@@ -650,7 +650,7 @@ then only add the frame work.
 | `Connected` | `EAFOpen` / `EAFClose` | "In use by another program" on the page when the open fails. |
 | `Absolute` | — | Always true. |
 | `Position` | `EAFGetPosition` | |
-| `Move(position)` | `EAFMove` | Refused (`InvalidValue`) outside 0…`MaxStep`. |
+| `Move(position)` | `EAFMove` | Outside 0…`MaxStep` it goes to the nearest end, no error (ConformU's "Move - Below 0" / "Move - Above MaxStep" expect that). The page refuses such a position instead. |
 | `IsMoving` | `EAFIsMoving` | The SDK also says whether the hand controller is moving it: the page shows "moved by hand controller". |
 | `Halt` | `EAFStop` | |
 | `MaxStep` | `EAFGetMaxStep` | Read at connect; never set. |
@@ -659,6 +659,16 @@ then only add the frame work.
 | `Temperature` | `EAFGetTemp` | Not implemented when the SDK reports no reading. |
 | `TempComp`, `TempCompAvailable` | — | `TempCompAvailable` false; clients (NINA) do their own. |
 | `Action`: reverse, backlash (read) | `EAFGetReverse`, `EAFGetBacklash` | Shown on the page, read-only. |
+
+**Seen on a real EAF (2026-11-24, the user's, on a camera lens):** USB VID 03C3 PID 1F10 (two HID entries,
+"HID-compliant vendor-defined device" and "USB Input Device"); SDK 1.8.5; name "EAF", `EAFGetType` "EAF-0-0",
+firmware 3.2.2, a serial number; `EAFGetErrorCode` not supported (no E5 from this firmware: the move timeout is what
+catches a jam); temperature about 35 to 37 °C on the bench (inside the unit). About 370 steps/s once moving (2000
+steps in about 6 s, 10000 in about 27 s). `EAFOpen` answers "invalid ID" unless `EAFGetNum`/`EAFGetID` ran first in
+that process (the driver always lists first). `EAFGetProperty`'s MaxStep stayed 60000 after `EAFSetMaxStep` 19700,
+which `EAFGetMaxStep` reports (the driver reads that one). With the user's OK a one-off script, not the driver, set
+the position to 0 at the lens's infinity end (`EAFResetPostion`) and MaxStep to 19700 (its close-focus end), so
+ConformU's moves to 0 and MaxStep stay on the lens.
 
 ### EFW: Alpaca `FilterWheel` → ZWO EFW SDK
 | Alpaca | EFW SDK | Notes |
