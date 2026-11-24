@@ -173,7 +173,8 @@ address, SHA-256, size and notes from CHANGES.md), `CHANGES.md`, `NOTES.md` (the
 download for which device, then what's new) and **every current installer**, so each release, and so the latest
 one, has everything a new user needs. Versions already in the previous list keep their date and notes, and their
 installer in `dist/` must be the published file. It refuses a new version without its installer or a CHANGES.md
-entry. Nothing is published: `gh release create <tag> --notes-file dist/release/NOTES.md` with the other files is a
+entry. A driver in `drivers/` that isn't ready yet, and was never published, is left out with `--hold <key>`.
+Nothing is published: `gh release create <tag> --notes-file dist/release/NOTES.md` with the other files is a
 separate step ([UPDATES-PLAN.md](UPDATES-PLAN.md)).
 
 ## Adding a device

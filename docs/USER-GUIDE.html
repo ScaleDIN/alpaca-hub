@@ -101,7 +101,8 @@ computer or user details.</li>
 nothing at all. <b>Check now</b> looks straight away.</li>
 <li><b>Install</b> (on the hub's PC only): the hub downloads the installer, checks it against the published list (its
 size and SHA-256) and runs it; Windows asks for administrator rights. A file that doesn't match is deleted, never
-run. On a phone or another PC the Overview shows the updates but installs nothing.</li>
+run. Downloads go into <code>%LOCALAPPDATA%\alpaca-hub\updates</code>, which is emptied the next time the hub starts
+or downloads another update. On a phone or another PC the Overview shows the updates but installs nothing.</li>
 <li><b>A driver update</b> takes over by itself within seconds if no program is connected to that driver's devices;
 otherwise when they disconnect, or when you press <b>Switch now</b> under Drivers. The devices keep their tabs, Alpaca
 numbers and UniqueIDs.</li>

@@ -29,8 +29,9 @@ class Driver:
     key = "device"            # short id, used in settings, URLs and UniqueIDs. Never change it once released
     title = "Device"          # what the page calls it
     api = API_VERSION         # the hub API version this driver was written for
-    transport = "serial"      # "serial" only, for now (REFACTOR.md: "usb" and "network" come later)
+    transport = "serial"      # "serial", or "usb": a device opened only through its maker's SDK (see find)
     usb_ids = frozenset()     # {(vid, pid)}: the only ports this driver looks at
+    usb_vendors = frozenset()  # transport "usb": the USB vendor IDs whose devices make the hub call find()
     listen_baud = None        # passive drivers: baud to listen at
     probe_baud = None         # active drivers: baud for probe()
     probe_priority = 100      # active drivers on shared USB IDs are asked in this order, lowest first
@@ -49,6 +50,16 @@ class Driver:
         """Active: ask the device on an open, silent port (probe_baud) -> identity dict, or None.
         The identity should include "serial" when the device has one, so units can be told apart."""
         return None
+
+    def find(self, ctx, sims):
+        """Transport "usb": the units this driver's SDK lists now, as identity dicts (plain values), each with
+        "serial" (what tells units apart; make one from the model and the SDK's ID if the unit has none) and
+        optionally "name", "pid". The hub calls it at every scan while a device of one of usb_vendors is plugged in,
+        including units it already runs (list them too: a unit missing for a while is dropped). A unit in use by
+        another program is left out. sims: None for the real SDK, else the simulators plugged in (--simulate, tests).
+        The hub then starts each new unit with start(ctx, port, ident), port being a PortInfo named
+        "USB-<key>-<serial>" that is never opened."""
+        return []
 
     def start(self, ctx, port, ident):
         """Runs the device found on port. ctx is this driver's HubContext. Returns an Instance."""

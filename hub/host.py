@@ -10,6 +10,7 @@ import http.client
 import json
 import logging
 import os
+import re
 import socket
 import sys
 import threading
@@ -26,7 +27,9 @@ from .core.page import Page
 
 from . import NAME, VERSION
 from .api import API_VERSION, HubContext
+from .api import _safe
 from .ports import PortInfo, list_ports, open_port
+from .usbdevs import list_usb
 from .recorder import Recorder, clamp_days, history_unit
 from .relay import LocalLink, PortRelay, RelaySerial
 from .shell import shell_page
@@ -41,6 +44,8 @@ SCAN_S = 15.0        # look for new devices this often
 LISTEN_S = 2.5       # listen this long on a port before anything is sent to it
 RETRY_S = 60.0       # a port nobody recognised is looked at again after this long
 GONE_S = 60.0        # a device whose port has been missing this long is dropped (page and Alpaca)
+MAX_TAB_ORDER = 100   # slugs kept in the tab_order setting
+_SLUG_RE = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}")
 TABLE_S = 2.0        # how long the merged device table is cached
 IDENTIFY_EXTRA_S = 10.0  # a port's identification may take this long beyond its listening before it counts as stuck
 _STUCK = object()
@@ -65,11 +70,14 @@ class HubSettings:
     # "api": the hub API the saved numbers belong to (0: before hub API 1, when UniqueIDs were made differently)
     # "drivers_off": drivers turned off on Overview's Drivers list (they aren't started)
     FIELDS = {"http_port": 11111, "bind": "0.0.0.0", "numbers": {}, "primary": {}, "location": "", "api": 0,
-              "drivers_off": [], "ports_ignored": [], "history_days": 7, "update_check": True}
+              "drivers_off": [], "ports_ignored": [], "history_days": 7, "update_check": True,
+              "tab_order": []}
     # "ports_ignored": ports ignored on Overview, as {"device", "vid", "pid", "serial", "description"}: one with a USB
     # serial number is matched by it (whatever its COM number), else by its COM port
     # "history_days": how long the day files the hub writes for each device are kept (hub/recorder.py)
     # "update_check": the Overview's "Check for updates online" (hub/updates.py); off, the hub sends nothing
+    # "tab_order": the device tabs' order as dragged on the status page, as slugs (Hub.ordered_instances); a slug
+    # not present now keeps its place for when it comes back
 
     def __init__(self, path):
         self.path = path
@@ -102,7 +110,7 @@ class HubSettings:
 class Hub:
     def __init__(self, drivers, config_dir=None, bind=None, http_port=None, port_lister=list_ports,
                  opener=open_port, simulated=False, use_standalone_settings=True, scan_s=SCAN_S, listen_s=LISTEN_S, identify_s=None,
-                 supervisor=None, on_shutdown=None, running_file=None, update_feed=None):
+                 supervisor=None, on_shutdown=None, running_file=None, update_feed=None, usb_lister=None):
         self.on_shutdown = on_shutdown        # POST /hub/shutdown from this PC (hub --stop) calls it
         self.running_file = running_file      # where the hub says it runs (port, pid) for driver installers
         self.supervisor = supervisor          # hub/supervisor.py: the driver processes (None: drivers run in here)
@@ -128,6 +136,12 @@ class Hub:
         if http_port is not None:
             self.settings.http_port = http_port
         self.port_lister = port_lister
+        # USB devices for drivers with transport "usb" (hub/usbdevs.py). A simulated hub sees only the simulated ones
+        # (the lister from simulated_ports carries them), never this PC's real ones.
+        if usb_lister is None:
+            usb_lister = getattr(port_lister, "usb", None) or (list_usb if not simulated else (lambda: []))
+        self.usb_lister = usb_lister
+        self._usb_units = {}                  # driver key -> the units its find() listed last
         self.opener = opener                  # opener(device, baud) -> open serial port
         self.simulated = simulated
         self.use_standalone_settings = use_standalone_settings   # where the old hub kept the first unit's settings
@@ -538,10 +552,53 @@ class Hub:
             return _STUCK
         return box.get("r")
 
+    def _find_usb(self, driver, present):
+        """The units a "usb" driver lists (Driver.find), or None if it couldn't say."""
+        if hasattr(driver, "find_remote"):        # in its own process
+            return driver.find_remote(present)
+        sims = [u.sim for u in present if u.sim is not None] if self.simulated else None
+        try:
+            units = driver.find(self._ctx[driver.key], sims)
+        except Exception:
+            log.exception("%s: find failed", driver.key)
+            return None
+        return [x for x in (units or []) if isinstance(x, dict) and isinstance(x.get("serial"), str) and x["serial"]]
+
+    def scan_usb(self):
+        """{pseudo device: (PortInfo, driver, identity)} for every unit the "usb" drivers list. A driver is asked only
+        while a device of one of its vendors is plugged in; one that can't answer keeps the units it listed last."""
+        drivers = [d for d in self.drivers if getattr(d, "transport", "serial") == "usb"]
+        if not drivers:
+            return {}
+        try:
+            present = list(self.usb_lister())
+        except Exception:
+            log.exception("listing USB devices failed")
+            present = []
+        out = {}
+        for d in drivers:
+            mine = [u for u in present if u.vid in d.usb_vendors]
+            if not mine:
+                self._usb_units.pop(d.key, None)
+                continue
+            units = self._find_usb(d, mine)
+            if units is None:
+                units = self._usb_units.get(d.key, [])
+            self._usb_units[d.key] = units
+            for ident in units:
+                pid = ident.get("pid") if type(ident.get("pid")) is int else mine[0].pid
+                dev = f"USB-{d.key}-{_safe(ident['serial'])}"
+                out[dev] = (PortInfo(dev, mine[0].vid, pid, ident["serial"], str(ident.get("name") or d.title)),
+                            d, ident)
+        return out
+
     def scan_once(self):
         now = time.monotonic()
-        ports = {p.device: p for p in self.port_lister()}
-        self.ports_seen = ports                  # for Overview's Serial ports list
+        serial_ports = {p.device: p for p in self.port_lister()}
+        self.ports_seen = serial_ports           # for Overview's Serial ports list
+        usb_units = self.scan_usb()
+        ports = dict(serial_ports)
+        ports.update({dev: u[0] for dev, u in usb_units.items()})
         with self._lock:
             claimed = {i.port.device: slug for slug, i in self.instances.items()}
             # drop devices whose port has gone for good (unplugged, powered off for a while)
@@ -564,8 +621,9 @@ class Hub:
                 self._release(dev)               # an instance's own port stays held until the instance is dropped
         # First identify every new port, then start the instances (recognised ports stay open meanwhile, see
         # opener_for). Detection then runs before any link starts reading.
-        found = []
-        for dev, port in sorted(ports.items()):
+        found = [(port, (driver, ident)) for dev, (port, driver, ident) in sorted(usb_units.items())
+                 if dev not in claimed]
+        for dev, port in sorted(serial_ports.items()):
             if self._stop.is_set():
                 return
             late = self._stuck.get(dev)
@@ -907,9 +965,46 @@ class Hub:
             self._txn += 1
             return self._txn
 
-    def hub_json(self):
+    def ordered_instances(self):
+        """The devices in their tabs' order: those in the saved tab_order first, as saved, then the rest by driver
+        and unit number. Never the order they were found in, which changes with COM numbers and replugging."""
         with self._lock:
             insts = list(self.instances.values())
+        saved = {s: n for n, s in enumerate(self._saved_tab_order())}
+        return sorted(insts, key=lambda i: (saved.get(i.slug, len(saved)), i.driver.key,
+                                            i.number if isinstance(getattr(i, "number", None), int) else 1 << 30,
+                                            i.slug))
+
+    def _saved_tab_order(self):
+        t = self.settings.tab_order
+        return [s for s in t if isinstance(s, str)] if isinstance(t, list) else []
+
+    def set_tab_order(self, slugs):
+        """The page's dragged order (the slugs of the tabs it shows). A saved slug the page didn't send (a device
+        not present now) stays right after the one it followed before, so it comes back where it was."""
+        new = []
+        for s in slugs:
+            if isinstance(s, str) and _SLUG_RE.fullmatch(s) and s not in new:
+                new.append(s)
+        new = new[:MAX_TAB_ORDER]
+        old = self._saved_tab_order()
+        for n, s in enumerate(old):
+            if s in new:
+                continue
+            before = next((p for p in reversed(old[:n]) if p in new), None)
+            new.insert(new.index(before) + 1 if before else 0, s)
+        self.settings.tab_order = new[:MAX_TAB_ORDER]
+        self.settings.save()
+        return self.settings.tab_order
+
+    def reset_tab_order(self):
+        """Overview's Reset order: back to the default (by driver and unit number), forgetting every placed tab."""
+        self.settings.tab_order = []
+        self.settings.save()
+        return []
+
+    def hub_json(self):
+        insts = self.ordered_instances()
         return {"name": NAME, "version": VERSION, "simulated": self.simulated, "urls": self.public_urls(),
                 "uptime": int(time.time() - self.started),
                 "devices": [{"slug": i.slug, "title": i.title, "kind": i.driver.key, "port": i.port.device, "up": i.up(),
@@ -921,6 +1016,7 @@ class Hub:
                 "refused": dict(self.refused),
                 "last_scan": self.last_scan,
                 "scan_every": self.scan_s,
+                "tab_order_saved": bool(self._saved_tab_order()),   # Overview's Reset order
                 "alpaca": [{k: r[k] for k in ("type", "number", "name", "slug")} for r in self.device_table()],
                 "updates": self.updates_json()}
 
@@ -1190,6 +1286,16 @@ class _Handler(BaseHTTPRequestHandler):
                 n = int(self.headers.get("Content-Length") or 0)
                 form = dict(urllib.parse.parse_qsl(self.rfile.read(n).decode("utf-8", "replace") if n else ""))
                 return self._reply(200, json.dumps({"days": hub.set_history_days(form.get("days"))}))
+            if path == "/hub/tab-order" and self.command == "POST":
+                # the device tabs' dragged order, "order=slug,slug,…"; "reset=1" goes back to the default
+                if self.headers.get("X-Hub-Page") != "1":
+                    return self._reply(403, "Page requests only", "text/plain")
+                n = int(self.headers.get("Content-Length") or 0)
+                form = dict(urllib.parse.parse_qsl(self.rfile.read(n).decode("utf-8", "replace") if n else ""))
+                if form.get("reset") == "1":
+                    return self._reply(200, json.dumps({"order": hub.reset_tab_order()}))
+                order = [x for x in form.get("order", "").split(",") if x]
+                return self._reply(200, json.dumps({"order": hub.set_tab_order(order)}))
             if len(parts) in (4, 5) and parts[:2] == ["hub", "history"] and self.command in ("GET", "HEAD"):
                 # /hub/history/<driver>/<unit>.zip, /hub/history/<driver>/<unit>/<file>.csv: listed names only
                 key = urllib.parse.unquote(parts[2])

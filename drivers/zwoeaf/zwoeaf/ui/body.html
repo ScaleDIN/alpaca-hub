@@ -1,0 +1,34 @@
+<!-- ZWO EAF status page (device-web-ui kit). Built by hub/core/page.py, served by hub/devserver.py. -->
+<main class="cols top">
+<div class="pinwrap" id="pinwrap" aria-hidden="true"><div class="pinbar" id="pinbar"></div></div>
+<header><div><h1 id="name">ZWO EAF</h1><div class="mut" id="sub"></div></div>
+<div class="hright"><span id="link" class="pill" title="The focuser, through ZWO's EAF SDK on USB">…</span>
+<span id="client" class="pill" title="An ASCOM Alpaca client (your imaging program, for example) has connected this focuser">…</span>
+<span class="pill warn" id="upd" style="display:none;cursor:pointer" onclick="location.reload()" title="The hub runs a different version than this page came from">New version: reload</span>
+<button class="hbtn" id="night" title="Red night mode (keeps dark adaptation)">🌙</button></div></header>
+
+<div class="grid" id="tiles"></div>
+
+<section class="card"><div class="bar"><span class="seg" id="ranges"></span><select id="panel" aria-label="Chart"></select><span class="sp"></span>
+<button id="zr" style="display:none" title="Show the whole range again (or double-click the chart)">Reset zoom</button><button id="brng" class="rng" title="Each step's lowest to highest reading, as a band">Range: auto</button><button id="bpng" title="Save the chart as shown as a PNG image">PNG</button><button id="bcsv" title="The samples in view as CSV">CSV</button></div>
+<div class="cw"><canvas id="ch"></canvas><div class="tip" id="tip"></div></div>
+<div class="lg" id="cust" style="display:none;margin:6px 0 0"></div><div class="lg" id="lg"></div><div class="mut" id="chNote" style="font-size:12px;margin-top:4px"></div>
+<p class="note" style="margin:6px 0 0">1 s detail for the last 10 minutes, 10-second averages for 24 hours, kept while the hub runs.</p></section>
+
+<section class="card" id="ctl"><h2>Controls</h2>
+<div class="lock" id="cLock" aria-live="polite"><span id="cLockTxt"></span><button type="button" id="cUnlock"></button></div>
+<form class="cgrp ctl" id="fm" autocomplete="off">
+<label title="Absolute position, 0 to the focuser's maximum step (set in ZWO's software)">Go to <span class="nu"><input name="go" type="number" min="0" step="1" inputmode="numeric"><i class="u">steps</i></span></label>
+<div class="crow"><span>Move</span><span class="seg"><button type="submit" data-op="goto">Go</button><button type="button" data-op="halt">Halt</button></span></div>
+<label title="Move by this many steps from where it is now: In lowers the position, Out raises it">Step size <span class="nu"><input name="step" type="number" min="1" step="1" inputmode="numeric" placeholder="100"><i class="u">steps</i></span></label>
+<div class="crow"><span>Step</span><span class="seg"><button type="button" data-op="in">In</button><button type="button" data-op="out">Out</button></span></div>
+</form>
+<p class="msg" id="cMsg" aria-live="polite"></p>
+<p class="note" style="margin:6px 0 0">The same focuser your Alpaca programs drive. The controls lock while an Alpaca program is connected; Halt always works. Moves by the hand controller can't be stopped from here.</p></section>
+
+<div id="side">
+<details class="card" id="d-dev" open><summary>Focuser</summary>
+<table class="kv" id="dt"></table>
+<p class="note" style="margin:6px 0 0">Maximum step, reverse, backlash and beep are stored in the focuser and set with ZWO's own software: the hub only reads them.</p></details>
+</div>
+</main>

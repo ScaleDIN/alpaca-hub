@@ -97,6 +97,15 @@ The **identity** (`recognise`/`probe`'s dict) should include `"serial"` when the
 that is how two of the same device are told apart (see `unit_of` below). It crosses a pipe as JSON, so use plain
 values only: strings, numbers, booleans, lists, dicts.
 
+**Devices opened through a maker's SDK** (USB HID or vendor USB, not a COM port: ZWO's EAF, for example) set
+`transport = "usb"` and `usb_vendors = frozenset({0x03C3})` instead of `usb_ids`, listening and probing. The hub never
+opens them: while a USB device of one of those vendors is plugged in, it calls `find(ctx, sims)` at every scan, and
+your driver returns the units its SDK lists, as identities with `"serial"` (units in use by another program left
+out). Each new unit is started with `start(ctx, port, ident)`, where `port` is a stand-in named
+`USB-<key>-<serial>` that is never opened; a unit missing from `find` for a minute is dropped. `sims` is `None` for
+the real SDK, or the simulators that are plugged in (`--simulate`, the tests), which then stand in for the SDK. Your
+process must stop any motion itself in `stop()`. See [`drivers/zwoeaf`](../drivers/zwoeaf).
+
 **Simulators**: `simulators = {name: factory}`, `factory(index) -> (simulator, (vid, pid), usb serial, description)`.
 The simulator has `opener(device, baud)` returning a port-like object (`readline`, `read`, `write`, `close`; see
 [`sim.py`](example-driver/thermo/thermo/sim.py)). `--simulate name` and the tests use it. Make it behave like the real

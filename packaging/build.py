@@ -5,7 +5,7 @@
     python packaging/build.py driver wcover           one driver of this repository (drivers/wcover)
     python packaging/build.py driver --folder D:/my/thermo   a driver folder anywhere (someone else's driver)
     python packaging/build.py all                     the hub and every folder in drivers/
-    python packaging/build.py release --url-base https://...  [--previous releases.json]
+    python packaging/build.py release --url-base https://...  [--previous releases.json] [--hold KEY ...]
                                                       the version list and files to publish (packaging/release.py)
 
 Options: --skip-tests (don't run the test suite first).
@@ -289,16 +289,20 @@ def main():
     ap.add_argument("--skip-tests", action="store_true")
     ap.add_argument("--url-base", help="release: where the new installers will be downloaded from (https://...)")
     ap.add_argument("--previous", help="release: the releases.json published last time")
+    ap.add_argument("--hold", action="append", default=[], metavar="KEY",
+                    help="release: leave out a driver in drivers/ that isn't ready (never published); repeatable")
     a = ap.parse_args()
     os.chdir(ROOT)
     os.makedirs(DIST, exist_ok=True)
     if a.what == "release":
         import release
         try:
-            out, feed, files, new_names = release.release(ROOT, DIST, a.url_base, a.previous)
+            out, feed, files, new_names = release.release(ROOT, DIST, a.url_base, a.previous, hold=a.hold)
         except release.ReleaseError as e:
             sys.exit("Release not written:\n  " + "\n  ".join(e.problems))
         step(f"Release written to {out} (nothing published)")
+        for key in a.hold:
+            print(f"  {key:12s} held back (not in this release)")
         for name, e in [("Hub", feed["hub"])] + sorted(feed["drivers"].items()):
             new = f"{name} {e['version']}" in new_names
             print(f"  {name:12s} {e['version']:8s} {'NEW' if new else 'unchanged'}")

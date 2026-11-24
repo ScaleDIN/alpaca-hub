@@ -91,7 +91,8 @@ host.
     afterwards (its "Start now" box stays unticked for normal installs). The page shows "restarting…" and reloads
     when the new version answers. It already has the "New version: reload" pill.
   - **Both at once:** the hub first, then the drivers.
-- Old downloads are deleted after a successful install.
+- Old downloads are deleted the next time the hub starts or downloads (an installer can't delete itself while it
+  runs, and the hub's own installer stops the hub).
 
 ### 6. Trust
 

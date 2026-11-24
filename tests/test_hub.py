@@ -228,6 +228,51 @@ class HubTests(unittest.TestCase):
         self.assertEqual(set(self.bench.lines[before:]), {("COM8", True)})
         self.assertEqual(self.bench.written, [])
 
+    # ---------------------------------------------------------------- the tabs' order
+    def test_tab_order_is_stable_and_saved(self):
+        # Found in COM order (COM10 < COM26 < COM8 as text), the tabs still go by driver and unit number.
+        self.bench.add_box("COM8")
+        self.bench.add_panel("COM26")
+        self.bench.add_nc("COM10", "25905")
+        self.bench.add_nc("COM11", "30000")
+        h = self.new_hub()
+        h.scan_once()
+        slugs = lambda: [d["slug"] for d in json.loads(self.get(h, "/hub.json")[1])["devices"]]
+        self.assertEqual(slugs(), ["nitecrawler", "nitecrawler-2", "box", "panel"])
+
+        def post(body, page=True):
+            req = urllib.request.Request(f"http://127.0.0.1:{h.port}/hub/tab-order", method="POST", data=body,
+                                         headers={"X-Hub-Page": "1"} if page else {})
+            with urllib.request.urlopen(req, timeout=10) as r:
+                return json.loads(r.read())["order"]
+        with self.assertRaises(urllib.error.HTTPError) as e:
+            post(b"order=panel", page=False)
+        self.assertEqual(e.exception.code, 403)
+        self.assertEqual(slugs(), ["nitecrawler", "nitecrawler-2", "box", "panel"])
+        # dragged: the page sends its tabs' order; junk and repeats are dropped
+        self.assertEqual(post(b"order=panel,box,nitecrawler-2,panel,..%2Fx,nitecrawler"),
+                         ["panel", "box", "nitecrawler-2", "nitecrawler"])
+        self.assertEqual(slugs(), ["panel", "box", "nitecrawler-2", "nitecrawler"])
+        self.assertEqual(H.HubSettings.load(h.settings.path).tab_order, ["panel", "box", "nitecrawler-2", "nitecrawler"])
+        # the box is unplugged and the rest reordered: it keeps its place after the panel for when it's back
+        self.assertEqual(post(b"order=nitecrawler,panel,nitecrawler-2"),
+                         ["nitecrawler", "panel", "box", "nitecrawler-2"])
+        # a device never placed goes after the placed ones, by driver
+        h.settings.tab_order = ["box"]
+        self.assertEqual(slugs(), ["box", "nitecrawler", "nitecrawler-2", "panel"])
+        h.settings.tab_order = "junk"            # a hand-edited settings file
+        self.assertEqual(slugs(), ["nitecrawler", "nitecrawler-2", "box", "panel"])
+        # Overview's Reset order: back to the default, the absent device's place forgotten too
+        self.assertEqual(post(b"order=panel,box"), ["panel", "box"])
+        self.assertIs(json.loads(self.get(h, "/hub.json")[1])["tab_order_saved"], True)
+        with self.assertRaises(urllib.error.HTTPError) as e:
+            post(b"reset=1", page=False)
+        self.assertEqual(e.exception.code, 403)
+        self.assertEqual(post(b"reset=1"), [])
+        self.assertEqual(slugs(), ["nitecrawler", "nitecrawler-2", "box", "panel"])
+        self.assertIs(json.loads(self.get(h, "/hub.json")[1])["tab_order_saved"], False)
+        self.assertEqual(H.HubSettings.load(h.settings.path).tab_order, [])
+
     # ---------------------------------------------------------------- numbering
     def test_public_numbers_are_stable(self):
         self.bench.add_nc("COM10", "25905")

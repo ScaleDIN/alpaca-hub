@@ -14,7 +14,10 @@ its own network address. Alpaca Hub replaces those with one program:
   discovery, or at `http://<this PC>:11111/`. Focusers, rotators, switches, the cover and the weather readings all
   come from the same place.
 - **It gives each device a page.** The status page has an Overview and a tab per device that is present: readings,
-  a chart, controls and settings. It works in any browser, also on a phone or tablet on your home network.
+  a chart, controls and settings. It works in any browser, also on a phone or tablet on your home network. Drag a
+  tab to move it (or press Ctrl+Shift+← / → on it): the hub keeps that order, for every browser, and an unplugged
+  device's tab comes back in its place. **Reset order** under the devices on Overview puts them back in the usual
+  order.
 - **It keeps a history.** Every device's readings are charted and saved to a file per day, so you can look back at a
   night's temperatures, dew heater power or focuser positions.
 

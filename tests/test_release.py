@@ -128,6 +128,20 @@ class FeedTest(unittest.TestCase):
                                     {**self.changes, ("hub", "0.5.0"): "- x"}, URL, prev)
         self.assertIn("wcover", feed["drivers"])
 
+    def test_a_driver_not_ready_can_be_held_back(self):
+        self.all_exes()
+        prev, _, _ = release.make_feed(HUB, DRIVERS, self.dist, self.changes, URL)
+        drivers = dict(DRIVERS, zwo={"key": "zwo", "title": "ZWO", "version": "0.1.0", "api": 1})
+        with self.assertRaises(release.ReleaseError) as e:        # unheld: no installer built for it
+            release.make_feed({"version": "0.5.0", "api": 1}, drivers, self.dist,
+                              {**self.changes, ("hub", "0.5.0"): "- x", ("zwo", "0.1.0"): "- y"}, URL, prev)
+        self.assertIn("zwo 0.1.0: AlpacaHub-zwo-0.1.0-Setup.exe isn't in", str(e.exception))
+        self.assertEqual(sorted(release.hold_back(drivers, ["zwo"], prev)), ["optec", "wcover"])
+        with self.assertRaises(release.ReleaseError) as e:
+            release.hold_back(drivers, ["optec", "nope"], prev)
+        self.assertIn("--hold optec: it's already published (1.1.0)", str(e.exception))
+        self.assertIn("--hold nope: there's no drivers/nope", str(e.exception))
+
     def test_refusals(self):
         self.all_exes()
         os.remove(os.path.join(self.dist, "AlpacaHub-optec-1.1.0-Setup.exe"))

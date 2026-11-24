@@ -1,0 +1,264 @@
+"""zwoeaf's own tests, on the simulated SDK: finding units, the Alpaca Focuser, the page, and what happens on a stall,
+a move that never finishes, the hand controller, an unplug and a stop mid-move. The hub's contract tests
+(tests/test_contract.py) also run it in its own process through the hub."""
+import json
+import os
+import sys
+import tempfile
+import time
+import unittest
+import urllib.error
+import urllib.parse
+import urllib.request
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.dirname(HERE))                                              # the driver folder
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(HERE))))           # the repository (hub)
+
+from hub.api import HubContext  # noqa: E402
+from hub.ports import PortInfo  # noqa: E402
+from zwoeaf import driver as D  # noqa: E402
+from zwoeaf.sim import SimEaf, SimSdk  # noqa: E402
+
+FAST = 4000.0           # steps/s in these tests
+
+
+def wait_for(cond, timeout=10.0):
+    end = time.monotonic() + timeout
+    while time.monotonic() < end:
+        if cond():
+            return True
+        time.sleep(0.05)
+    return cond()
+
+
+class FakeHub:
+    """Just what HubContext needs, so instances run here without a hub."""
+    def __init__(self, folder):
+        self.config_dir, self.simulated = folder, True
+        self.use_standalone_settings = False
+
+        class S:
+            primary = {}
+        self.settings = S()
+        self.n = 0
+
+    def public_urls(self):
+        return []
+
+    def is_local(self, ip):
+        return True
+
+    def free_number(self, key):
+        return self.n
+
+
+class FindTests(unittest.TestCase):
+    def test_lists_units_with_their_serials(self):
+        a, b = SimEaf(serial="AAAA", sdk_id=0), SimEaf(serial="BBBB", sdk_id=1)
+        d = D.ZwoEafDriver()
+        units = d.find(None, [a, b])
+        self.assertEqual([u["serial"] for u in units], ["AAAA", "BBBB"])
+        self.assertEqual(units[0]["name"], "EAF")
+        self.assertFalse(a.is_open or b.is_open, "find closes what it opened")
+        json.dumps(units)                                   # plain values: they cross a pipe
+
+    def test_a_unit_in_use_elsewhere_is_left_out(self):
+        a = SimEaf(serial="AAAA", sdk_id=0)
+        a.in_use = True
+        self.assertEqual(D.ZwoEafDriver().find(None, [a]), [])
+
+    def test_no_serial_in_the_firmware(self):
+        a = SimEaf(serial=None, sdk_id=3)
+        u = D.ZwoEafDriver().find(None, [a])[0]
+        self.assertEqual(u["serial"], "EAF-ID3")
+        self.assertFalse(u["has_serial"])
+
+    def test_unplugged_units_are_not_listed(self):
+        a = SimEaf(serial="AAAA", sdk_id=0)
+        d = D.ZwoEafDriver()
+        a.unplug()
+        self.assertEqual(d.find(None, [a]), [])
+
+    def test_simulators(self):
+        for name, factory in D.ZwoEafDriver.simulators.items():
+            sim, usb, serial, desc = factory(0)
+            self.assertEqual(usb[0], 0x03C3, name)
+            self.assertIn("EAF", desc)
+
+
+class InstanceTests(unittest.TestCase):
+    def setUp(self):
+        self.saved = (D.POLL_MOVING_S, D.POLL_IDLE_S, D.RELOCATE_S, D.MIN_SPEED, D.LIMIT_EXTRA_S)
+        D.POLL_MOVING_S, D.POLL_IDLE_S, D.RELOCATE_S = 0.05, 0.1, 0.2
+        self.hub = FakeHub(tempfile.mkdtemp())
+        self.sim = SimEaf(serial="EAF1", sdk_id=0, speed=FAST, max_step=20000, position=1000)
+        self.driver = D.ZwoEafDriver()
+        ident = self.driver.find(None, [self.sim])[0]
+        self.ctx = HubContext(self.hub, self.driver)
+        self.inst = self.driver.start(self.ctx, PortInfo("USB-zwoeaf-EAF1", 0x03C3, 0x1F10, "EAF1", "EAF"), ident)
+        self.base = f"http://127.0.0.1:{self.inst.local_port}"
+        self.assertTrue(wait_for(self.inst.up))
+
+    def tearDown(self):
+        self.inst.stop()
+        D.POLL_MOVING_S, D.POLL_IDLE_S, D.RELOCATE_S, D.MIN_SPEED, D.LIMIT_EXTRA_S = self.saved
+
+    def call(self, method, path, **form):
+        data = urllib.parse.urlencode(form).encode() if method in ("PUT", "POST") else None
+        url = self.base + path + ("" if data is not None or not form else "?" + urllib.parse.urlencode(form))
+        req = urllib.request.Request(url, data=data, method=method, headers={"X-Hub-Page": "1"})
+        try:
+            with urllib.request.urlopen(req, timeout=5) as r:
+                return r.status, r.read().decode()
+        except urllib.error.HTTPError as e:
+            return e.code, e.read().decode()
+
+    def alpaca(self, method, member, **form):
+        return json.loads(self.call(method, f"/api/v1/focuser/0/{member}", **form)[1])
+
+    def connect(self):
+        self.assertEqual(self.alpaca("PUT", "connected", Connected="True")["ErrorNumber"], 0)
+
+    def status(self):
+        return json.loads(self.call("GET", "/status.json")[1])
+
+    def test_holds_the_unit_and_find_still_lists_it(self):
+        self.assertTrue(self.sim.is_open)
+        self.assertEqual([u["serial"] for u in self.driver.find(None, [self.sim])], ["EAF1"])
+        self.assertTrue(self.sim.is_open, "find leaves a held unit alone")
+
+    def test_alpaca_focuser(self):
+        self.assertEqual(self.alpaca("GET", "position")["ErrorNumber"], 0x407, "not connected yet")
+        self.connect()
+        self.assertTrue(self.alpaca("GET", "absolute")["Value"])
+        self.assertEqual(self.alpaca("GET", "maxstep")["Value"], 20000)
+        self.assertEqual(self.alpaca("GET", "maxincrement")["Value"], 20000)
+        self.assertEqual(self.alpaca("GET", "position")["Value"], 1000)
+        self.assertFalse(self.alpaca("GET", "tempcompavailable")["Value"])
+        self.assertEqual(self.alpaca("GET", "stepsize")["ErrorNumber"], 0x400)
+        self.assertAlmostEqual(self.alpaca("GET", "temperature")["Value"], 12.5)
+        self.assertEqual(self.alpaca("PUT", "move", Position="3000")["ErrorNumber"], 0)
+        self.assertTrue(self.alpaca("GET", "ismoving")["Value"])
+        self.assertTrue(wait_for(lambda: not self.alpaca("GET", "ismoving")["Value"]))
+        self.assertEqual(self.alpaca("GET", "position")["Value"], 3000)
+        self.assertEqual(self.status()["last_move"]["text"], "reached 3000")
+        self.assertEqual(self.alpaca("PUT", "move", Position="20001")["ErrorNumber"], 0x401, "beyond the max step")
+        self.assertEqual(self.alpaca("PUT", "move", Position="-1")["ErrorNumber"], 0x401)
+        self.assertEqual(self.call("PUT", "/api/v1/focuser/0/move")[0], 400, "no Position")
+
+    def test_halt(self):
+        self.connect()
+        self.sim.speed = 500.0
+        self.alpaca("PUT", "move", Position="15000")
+        time.sleep(0.3)
+        self.assertEqual(self.alpaca("PUT", "halt")["ErrorNumber"], 0)
+        self.assertTrue(wait_for(lambda: not self.alpaca("GET", "ismoving")["Value"]))
+        pos = self.alpaca("GET", "position")["Value"]
+        self.assertLess(pos, 15000)
+        self.assertTrue(wait_for(lambda: self.status()["last_move"]["text"] == f"halted at {pos}"))
+
+    def test_stall_reported_by_the_firmware(self):
+        self.connect()
+        self.sim.jam(at=2000)
+        self.alpaca("PUT", "move", Position="5000")
+        self.assertTrue(wait_for(lambda: self.inst.stalled is not None))
+        self.assertEqual(self.inst.stalled, 2000)
+        s = self.status()
+        self.assertEqual(s["state_class"], "bad")
+        self.assertIn("stalled at 2000", s["state"])
+        self.assertIn("E5", s["last_move"]["text"])
+        self.assertEqual(self.inst.summary()["state"], "bad")
+        # a new move clears it (here: back, away from the jam)
+        self.alpaca("PUT", "move", Position="1500")
+        self.assertTrue(wait_for(lambda: self.inst.position == 1500 and not self.inst.moving_flag))
+        self.assertIsNone(self.inst.stalled)
+        self.assertEqual(self.inst.state()[1], "ok")
+
+    def test_a_move_that_never_finishes_is_stopped(self):
+        D.MIN_SPEED, D.LIMIT_EXTRA_S = 10000.0, 0.5
+        self.connect()
+        self.sim.hang()
+        self.alpaca("PUT", "move", Position="5000")
+        self.assertTrue(wait_for(lambda: self.inst.last_move and "not finishing" in self.inst.last_move["text"]))
+        self.assertGreaterEqual(self.sim.stops, 1, "EAFStop sent")
+        self.assertEqual(self.inst.state()[1], "bad")
+
+    def test_hand_controller(self):
+        self.connect()
+        self.sim.speed = 200.0
+        self.sim.hand_move(5000)
+        self.assertTrue(wait_for(lambda: self.inst.hand))
+        self.assertTrue(self.alpaca("GET", "ismoving")["Value"])
+        self.assertEqual(self.alpaca("PUT", "move", Position="100")["ErrorNumber"], 0x40B)
+        code, text = self.call("POST", "/control", op="goto", value="100", override="1")
+        self.assertEqual(code, 409)
+        self.assertIn("hand controller", text)
+        self.assertIn("hand controller", self.status()["state"])
+
+    def test_unplugged_mid_move_then_back(self):
+        self.connect()
+        self.sim.speed = 500.0
+        self.alpaca("PUT", "move", Position="15000")
+        time.sleep(0.2)
+        self.sim.unplug()
+        self.assertTrue(wait_for(lambda: self.inst.id is None))
+        self.assertIn("lost during the move", self.inst.last_move["text"])
+        self.assertEqual(self.alpaca("GET", "position")["ErrorNumber"], 0x500)
+        self.assertFalse(self.inst.up())
+        self.assertEqual(self.inst.summary()["state"], "bad")
+        self.assertEqual(self.sim.moves, [15000], "not retried")
+        self.sim.plug()
+        self.assertTrue(wait_for(lambda: self.inst.up(), 5), "back by itself")
+        self.assertEqual(self.alpaca("GET", "position")["ErrorNumber"], 0)
+
+    def test_stop_mid_move_stops_the_motor(self):
+        self.connect()
+        self.sim.speed = 300.0
+        self.alpaca("PUT", "move", Position="15000")
+        time.sleep(0.2)
+        self.inst.stop()
+        self.assertGreaterEqual(self.sim.stops, 1)
+        self.assertIsNone(self.sim._target, "the motor stopped")
+        self.assertFalse(self.sim.is_open, "let go of")
+
+    def test_page_controls(self):
+        code, page = self.call("GET", "/")
+        self.assertEqual(code, 200)
+        self.assertIn("Controls", page)
+        self.assertEqual(self.call("POST", "/control", op="goto", value="2500")[0], 200)
+        self.assertTrue(wait_for(lambda: self.inst.position == 2500 and not self.inst.moving_flag))
+        self.assertEqual(self.call("POST", "/control", op="step", value="-500")[0], 200)
+        self.assertTrue(wait_for(lambda: self.inst.position == 2000 and not self.inst.moving_flag))
+        self.assertEqual(self.call("POST", "/control", op="goto", value="lots")[0], 400)
+        self.assertEqual(self.call("POST", "/control", op="goto", value="99999")[0], 409)
+        self.connect()
+        self.assertNotEqual(self.call("POST", "/control", op="goto", value="100")[0], 200,
+                            "locked while a client is connected")
+        self.assertEqual(self.call("POST", "/control", op="halt", override="1")[0], 200)
+        s = self.status()
+        for k in ("position", "max_step", "reverse", "backlash", "serial", "firmware", "codes", "uid"):
+            self.assertIn(k, s)
+        self.assertEqual(s["max_step"], 20000)
+        self.assertTrue(s["codes"])
+
+
+class OldFirmwareTests(unittest.TestCase):
+    def test_no_motor_codes(self):
+        saved = D.POLL_IDLE_S
+        D.POLL_IDLE_S = 0.05
+        sim = SimEaf(serial="OLD", codes=False, speed=FAST)
+        d = D.ZwoEafDriver()
+        ident = d.find(None, [sim])[0]
+        inst = d.start(HubContext(FakeHub(tempfile.mkdtemp()), d), PortInfo("USB-zwoeaf-OLD", 0x03C3, 1, "OLD", ""),
+                       ident)
+        try:
+            self.assertTrue(wait_for(lambda: inst.codes is False))
+            self.assertTrue(inst.up())
+        finally:
+            inst.stop()
+            D.POLL_IDLE_S = saved
+
+
+if __name__ == "__main__":
+    unittest.main()

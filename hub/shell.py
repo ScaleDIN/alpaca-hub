@@ -18,7 +18,7 @@ header{padding:6px var(--sb,0px) 6px 0;background:var(--bar);border-bottom:1px s
 @media (max-width:999px){.hb{padding:0 12px}}
 .brand{font-weight:700;margin-right:8px;white-space:nowrap}
 .tab{border:1px solid transparent;background:none;color:var(--mut);padding:7px 12px;border-radius:8px;font:inherit;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:6px}
-.tab:hover{color:var(--fg)}.tab[aria-selected=true]{color:var(--fg);background:var(--card);border-color:var(--line)}
+.tab:hover{color:var(--fg)}.tab.dragging{opacity:.4}.tab[aria-selected=true]{color:var(--fg);background:var(--card);border-color:var(--line)}
 .dot{width:8px;height:8px;border-radius:50%;background:var(--ok);flex:none}.dot.warn{background:var(--warn)}.dot.bad{background:var(--bad)}
 .sp{flex:1}.icon{border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:8px;padding:6px 10px;font:inherit;cursor:pointer;text-decoration:none;line-height:normal}#help{font-weight:600;min-width:2.4em;text-align:center}
 main{flex:1;position:relative;min-height:0}
@@ -143,17 +143,65 @@ function show(id) {
     document.querySelector('main').appendChild(f);
   }
 }
+// ---- The tabs: Overview, then the devices in the hub's order (Hub.ordered_instances). Device tabs can be dragged
+// like a browser's, or moved with Ctrl+Shift+←/→; the new order is saved in the hub, for every browser, until
+// Overview's Reset order.
+let dragging = null;                 // the tab being dragged
+function renderTabs() {
+  if (dragging) return;              // rebuilt after the drop
+  const tabs = [['overview', 'Overview', null]].concat(hub.devices.map((d) => [d.slug, d.title, d.up ? d.summary.state : 'bad']));
+  const html = tabs.map(([id, t, st]) => `<button class="tab" data-id="${id}" role="tab"${st ? ' draggable="true" title="Drag to move this tab"' : ''}>${st ? `<span class="dot ${st == 'ok' ? '' : st}"></span>` : ''}${esc(t)}</button>`).join('');
+  const nav = $('tabs');
+  if (nav.dataset.html == html) return;        // unchanged: keep the buttons (and their focus)
+  const focused = document.activeElement && document.activeElement.classList.contains('tab') ? document.activeElement.dataset.id : null;
+  nav.innerHTML = html; nav.dataset.html = html;
+  nav.querySelectorAll('.tab').forEach((b) => {
+    b.onclick = () => show(b.dataset.id);
+    b.setAttribute('aria-selected', b.dataset.id == cur);
+    if (b.dataset.id == 'overview') return;
+    b.ondragstart = (e) => { dragging = b; b.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', b.dataset.id); };
+    b.ondragend = () => { b.classList.remove('dragging'); dragging = null; saveTabOrder(); };
+    b.onkeydown = (e) => {
+      if (!e.ctrlKey || !e.shiftKey || (e.key != 'ArrowLeft' && e.key != 'ArrowRight')) return;
+      e.preventDefault();
+      const to = e.key == 'ArrowLeft' ? b.previousElementSibling : b.nextElementSibling;
+      if (!to || to.dataset.id == 'overview') return;
+      to.insertAdjacentElement(e.key == 'ArrowLeft' ? 'beforebegin' : 'afterend', b);
+      b.focus(); saveTabOrder();
+    };
+  });
+  if (focused) { const f = nav.querySelector(`.tab[data-id="${focused}"]`); if (f) f.focus(); }
+}
+// While dragging, the tab moves among the others as the pointer passes their middles (Overview stays first).
+$('tabs').ondragover = (e) => {
+  if (!dragging) return;
+  e.preventDefault(); e.dataTransfer.dropEffect = 'move';
+  const over = e.target.closest && e.target.closest('.tab');
+  if (!over || over == dragging || over.dataset.id == 'overview') return;
+  const r = over.getBoundingClientRect(), after = e.clientX > r.left + r.width / 2;
+  if (after ? over.nextElementSibling != dragging : over.previousElementSibling != dragging) over.insertAdjacentElement(after ? 'afterend' : 'beforebegin', dragging);
+};
+$('tabs').ondrop = (e) => { if (dragging) e.preventDefault(); };
+async function saveTabOrder() {
+  const order = [...$('tabs').querySelectorAll('.tab')].map((b) => b.dataset.id).filter((id) => id != 'overview');
+  if (!hub || order.join() == hub.devices.map((d) => d.slug).join()) { renderTabs(); return; }
+  hub.devices.sort((a, b) => order.indexOf(a.slug) - order.indexOf(b.slug));   // at once, before the hub's answer
+  hub.tab_order_saved = true;
+  render();
+  await fetch('hub/tab-order', { method: 'POST', headers: { 'X-Hub-Page': '1', 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: 'order=' + encodeURIComponent(order.join(',')) }).catch(() => null);
+  tick();
+}
 function render() {
   const devs = hub.devices;
-  const tabs = [['overview', 'Overview', null]].concat(devs.map((d) => [d.slug, d.title, d.up ? d.summary.state : 'bad']));
-  $('tabs').innerHTML = tabs.map(([id, t, st]) => `<button class="tab" data-id="${id}" role="tab">${st ? `<span class="dot ${st == 'ok' ? '' : st}"></span>` : ''}${esc(t)}</button>`).join('');
-  document.querySelectorAll('.tab').forEach((b) => { b.onclick = () => show(b.dataset.id); });
+  renderTabs();
   for (const s of Object.keys(frames)) if (!devs.some((d) => d.slug == s)) { frames[s].remove(); delete frames[s]; }
   if (cur != 'overview' && !devs.some((d) => d.slug == cur)) cur = 'overview';
   const al = (slug) => hub.alpaca.filter((a) => a.slug == slug).map((a) => `${a.type} #${a.number}`).join(' · ');
   $('list').innerHTML = updatesLine() + (devs.length ? devs.map((d) => `<div class="dev" data-id="${d.slug}"><span class="dot ${d.up ? (d.summary.state == 'ok' ? '' : d.summary.state) : 'bad'}"></span>
     <h3>${esc(d.title)}</h3><span class="s">${esc(d.port)}${d.missing ? ' · unplugged?' : ''}</span>
     <span class="al">${esc(d.up ? d.summary.text : 'not answering')}${al(d.slug) ? ' — Alpaca ' + esc(al(d.slug)) : ''}</span></div>`).join('')
+      + (hub.tab_order_saved ? '<div class="uset" style="margin:0 0 10px"><span class="s">The tabs are in the order you dragged them.</span><button id="tabReset">Reset order</button></div>' : '')
     : !(hub.drivers || []).length ? '<p class="empty">No drivers installed yet. Install the driver for each of your devices (AlpacaHub-&lt;device&gt;-Setup.exe): it appears below within seconds, and its device here on the next scan.</p>'
     : hub.last_scan && !(hub.ports || []).length ? '<p class="empty">No serial ports on this PC. Is the device plugged in by USB, and powered? It appears here within about 15 s.</p>'
     : '<p class="empty">Looking for devices on the serial ports… Plug one in and it appears here within about 15 s.</p>')
@@ -173,6 +221,11 @@ function render() {
     tick();
   }; });
   document.querySelectorAll('.drv details').forEach((d) => { d.ontoggle = () => { if (d.open) openLogs.add(d.dataset.name); else openLogs.delete(d.dataset.name); }; });
+  const tr = $('tabReset'); if (tr) tr.onclick = async () => {
+    tr.disabled = true;
+    await fetch('hub/tab-order', { method: 'POST', headers: { 'X-Hub-Page': '1', 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'reset=1' }).catch(() => null);
+    tick();
+  };
   const pd = $('ports'); if (pd) pd.ontoggle = () => { portsOpen = pd.open; };
   const ud = $('updLine'); if (ud) ud.ontoggle = () => { updOpen = ud.open; };
   const uc = $('updOn'); if (uc) uc.onchange = () => updPost('hub/updates', 'on=' + (uc.checked ? '1' : '0'));

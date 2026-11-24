@@ -4,6 +4,8 @@ Loads one driver module (its DRIVERS), connects to the hub over the pipe, and an
   hello(info)                          -> {"drivers": [what each Driver declares]}
   recognise(key, data)                 -> identity or None
   probe(key, device, baud)             -> identity or None (the port is a RelaySerial through the hub)
+  find(key, sims)                      -> [identity] (transport "usb": the units its SDK lists; sims: [[device, name,
+                                          index]] of the simulators plugged in, or None for the real SDK)
   start(key, port, ident, number)      -> {"slug", "title", "local_port"}
   stop(slug), ping(public_urls)        -> ping: {slug: [up, summary]}
   sim_info(name, index), sim_open(device, name, index, baud)   simulators live here, not in the hub
@@ -37,6 +39,7 @@ def describe(d):
     """What the hub needs to know about a Driver, as plain values."""
     return {"key": d.key, "title": d.title, "api": d.api, "transport": d.transport,
             "usb_ids": sorted([int(v), int(p)] for v, p in d.usb_ids),
+            "usb_vendors": sorted(int(v) for v in getattr(d, "usb_vendors", ())),
             "listen_baud": d.listen_baud, "probe_baud": d.probe_baud, "probe_priority": d.probe_priority,
             "never_probe": sorted([int(v), int(p)] for v, p in d.never_probe), "lines": bool(d.lines),
             "simulators": sorted(d.simulators)}
@@ -185,6 +188,10 @@ class DriverHost:
             return self.drivers[key].probe(ser)
         finally:
             ser.close()
+
+    def c_find(self, key, sims):
+        objs = None if sims is None else [self._sim(dev, name, int(i))[2] for dev, name, i in sims]
+        return list(self.drivers[key].find(self.ctx[key], objs) or [])
 
     def c_start(self, key, port, ident, number):
         d = self.drivers[key]

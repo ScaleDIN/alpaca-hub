@@ -161,9 +161,26 @@ def release_notes(feed, new_names):
     return "\n".join(out) + "\n"
 
 
-def release(root, dist, url_base=None, previous_path=None, today=None):
+def hold_back(drivers, hold, previous=None):
+    """drivers without the held ones. Only a driver never published can be held: a published one stays in every
+    release (each carries every current installer), so it is refused, as is a key that isn't in drivers/."""
+    problems = []
+    published = (previous or {}).get("drivers") or {}
+    for key in hold:
+        if key not in drivers:
+            problems.append(f"--hold {key}: there's no drivers/{key}")
+        elif key in published:
+            problems.append(f"--hold {key}: it's already published ({published[key].get('version')}), and every "
+                            "release carries every current installer")
+    if problems:
+        raise ReleaseError(problems)
+    return {k: d for k, d in drivers.items() if k not in hold}
+
+
+def release(root, dist, url_base=None, previous_path=None, today=None, hold=()):
     """Writes dist/release/: releases.json, CHANGES.md, NOTES.md (the release page's text) and every current
-    installer. Returns (its path, the list, the installers, the names new in it)."""
+    installer. Returns (its path, the list, the installers, the names new in it).
+    hold: keys of drivers in drivers/ left out of this release because they aren't ready (never published yet)."""
     previous = None
     if previous_path:
         with open(previous_path, encoding="utf-8") as f:
@@ -172,6 +189,7 @@ def release(root, dist, url_base=None, previous_path=None, today=None):
     with open(changes_path, encoding="utf-8") as f:
         changes = parse_changes(f.read())
     hub, drivers = current(root)
+    drivers = hold_back(drivers, hold, previous)
     feed, files, new_names = make_feed(hub, drivers, dist, changes, url_base, previous, today)
     out = os.path.join(dist, "release")
     shutil.rmtree(out, ignore_errors=True)

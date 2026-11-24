@@ -26,6 +26,7 @@ from hub import VERSION as HUB_VERSION  # noqa: E402
 from hub.catalog import parse_version  # noqa: E402
 from hub.catalog import SOURCE_ROOT, Catalog, load_in_process  # noqa: E402
 from hub.ports import PortInfo  # noqa: E402
+from hub.usbdevs import UsbDevice  # noqa: E402
 
 ALLOWED_HUB = ("hub.api", "hub.devserver", "hub.core")     # what a driver may use from the hub
 
@@ -140,11 +141,18 @@ class InProcessTests(unittest.TestCase):
         # The simulator runs here, standing in for the device: killing the driver's process leaves it alone, as it
         # leaves a real device alone (with --simulate it would live, and die, in the driver's process).
         simobj, usb, serial, desc = self.factory(key, sim)(0)
-        ports = [PortInfo("SIM1", usb[0], usb[1], serial, desc)]
+        self.usb = self.transport(key, sim) == "usb"
+        if self.usb:
+            # An SDK device: no port, and its simulator lives in the driver's process (the SDK runs there). A
+            # killed process starts a fresh one, as a real focuser would be found again.
+            ports, usb_devs = [], [UsbDevice(usb[0], usb[1], "SIM1", desc, sim_name=sim, sim_index=0)]
+        else:
+            ports, usb_devs = [PortInfo("SIM1", usb[0], usb[1], serial, desc)], []
         self.opens, self.written = opens, written = [], []      # this run's own (an old hub may still write)
 
         def lister():
             return list(ports)
+        lister.usb = lambda: list(usb_devs)
 
         def counting(device, baud, lines=False):
             opens.append(device)
@@ -206,6 +214,9 @@ class InProcessTests(unittest.TestCase):
     def _simulators(self, key):
         return sorted({n for d in self._local(key) for n in d.simulators})
 
+    def transport(self, key, sim):
+        return next(getattr(d, "transport", "serial") for d in self._local(key) if sim in d.simulators)
+
     def factory(self, key, sim):
         return next(d.simulators[sim] for d in self._local(key) if sim in d.simulators)
 
@@ -218,14 +229,21 @@ class InProcessTests(unittest.TestCase):
 
     def _check(self, key, meta, sim, proc):
         self.assertEqual(proc.entry.version, meta["version"])
-        port = self.hub.port_lister()[0]
-        # found, and a listening driver sends nothing while it is looked for
-        found = self.hub.identify(port)
-        self.assertIsNotNone(found, f"{sim} found")
-        driver, ident = found
-        if driver.listen_baud and not driver.probe_baud:
-            self.assertEqual(self.written, [], "nothing sent while listening")
-        self.hub._release(port.device)
+        if self.usb:
+            # found through its SDK while a device of its vendor is plugged in; never through a port
+            units = self.hub.scan_usb()
+            self.assertEqual(len(units), 1, f"{sim} found")
+            port = next(iter(units.values()))[0]
+            self.assertEqual(self.opens, [], "no port opened")
+        else:
+            port = self.hub.port_lister()[0]
+            # found, and a listening driver sends nothing while it is looked for
+            found = self.hub.identify(port)
+            self.assertIsNotNone(found, f"{sim} found")
+            driver, ident = found
+            if driver.listen_baud and not driver.probe_baud:
+                self.assertEqual(self.written, [], "nothing sent while listening")
+            self.hub._release(port.device)
         self.opens.clear()
         self.hub.scan_once()
         self.assertEqual(len(self.hub.instances), 1)

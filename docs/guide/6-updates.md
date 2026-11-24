@@ -22,7 +22,8 @@ all. *Check now* looks straight away.
 On the hub's PC, each update has an **Install** button:
 
 1. The hub downloads the installer and checks it against the published list (its size and SHA-256 checksum). A file
-   that doesn't match is deleted, never run.
+   that doesn't match is deleted, never run. Downloads go into `%LOCALAPPDATA%\alpaca-hub\updates\`, which is
+   emptied the next time the hub starts or downloads another update.
 2. It runs the installer, and Windows asks for administrator rights.
 3. **A driver** switches to the new version by itself, once no imaging program is connected to its devices (or with
    *Switch now* under Drivers).

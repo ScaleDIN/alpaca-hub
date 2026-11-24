@@ -27,6 +27,7 @@ from multiprocessing.connection import Listener
 from .channel import CallTimeout, Channel, ChannelClosed
 from .driverhost import AUTH_ENV
 from .ports import PortInfo
+from .usbdevs import UsbDevice
 from .relay import check_driver_msg
 
 log = logging.getLogger("hub.supervisor")
@@ -59,7 +60,9 @@ def _check_describe(d):
                   for x in d["usb_ids"] + d["never_probe"])
           and (d.get("listen_baud") is None or type(d["listen_baud"]) is int)
           and (d.get("probe_baud") is None or type(d["probe_baud"]) is int)
-          and isinstance(d.get("probe_priority", 100), (int, float)) and isinstance(d.get("simulators", []), list))
+          and isinstance(d.get("probe_priority", 100), (int, float)) and isinstance(d.get("simulators", []), list)
+          and d.get("transport", "serial") in ("serial", "usb")
+          and isinstance(d.get("usb_vendors", []), list) and all(type(v) is int for v in d.get("usb_vendors", [])))
     if not ok:
         raise ValueError("bad driver description")
 
@@ -77,6 +80,7 @@ class RemoteDriver:
         self.api = d.get("api")
         self.transport = d.get("transport", "serial")
         self.usb_ids = _usb_set(d["usb_ids"])
+        self.usb_vendors = frozenset(int(v) for v in d.get("usb_vendors", []))
         self.listen_baud, self.probe_baud = d.get("listen_baud"), d.get("probe_baud")
         self.probe_priority = d.get("probe_priority", 100)
         self.never_probe = _usb_set(d["never_probe"])
@@ -107,6 +111,23 @@ class RemoteDriver:
             self.proc.disallow(port.device, relay)
         return r if isinstance(r, dict) and r else None
 
+    def find_remote(self, present):
+        """Transport "usb": the units the driver process lists (Driver.find), or None if it couldn't say (not
+        running, no answer): the hub then keeps what it knew. present: the UsbDevices of its vendors; simulated ones
+        name their simulator in the driver process."""
+        if not self.proc.running:
+            return None
+        self._present = list(present)
+        sims = [[u.instance, u.sim_name, u.sim_index] for u in present if u.sim_name]
+        try:
+            r = self.proc.call("find", self.key, sims if sims else None, timeout=T_PROBE)
+        except Exception as e:
+            log.debug("%s: find failed: %s", self.key, e)
+            return None
+        if not isinstance(r, list):
+            return None
+        return [x for x in r if isinstance(x, dict) and isinstance(x.get("serial"), str) and x["serial"]]
+
     def start(self, ctx, port, ident):
         number = ctx._number if ctx._number is not None else 0
         inst = RemoteInstance(self, port, ident, number)
@@ -132,6 +153,10 @@ class RemoteInstance:
 
     def start_remote(self):
         p = self.port
+        d = self.driver
+        if d.transport == "usb" and getattr(d, "_present", None) is not None:
+            # A new process (after a restart, an update) knows no SDK or simulator until it has looked once
+            d.find_remote(d._present)
         r = self.driver.proc.call("start", self.driver.key,
                                   {"device": p.device, "vid": p.vid, "pid": p.pid, "serial": p.serial,
                                    "description": p.description}, self.ident, self.number, timeout=T_START)
@@ -841,13 +866,16 @@ class Supervisor:
             for d in p.drivers.values():
                 for n in d.simulators:
                     by_name.setdefault(n, p)
-        ports, where = [], {}
+        ports, usb, where = [], [], {}
         for i, kind in enumerate(k.strip() for k in spec.split(",") if k.strip()):
             if kind not in by_name:
                 raise SystemExit(f"--simulate: unknown device {kind!r} (known: {', '.join(sorted(by_name))})")
             dev = f"SIM{i + 1}"
             proc = by_name[kind]
             vid, pid, serial, desc = proc.call("sim_info", dev, kind, i, timeout=T_START)
+            if any(kind in d.simulators and d.transport == "usb" for d in proc.drivers.values()):
+                usb.append(UsbDevice(vid, pid, dev, desc, sim_name=kind, sim_index=i))   # an SDK device, no port
+                continue
             ports.append(PortInfo(dev, vid, pid, serial, desc))
             where[dev] = (proc, kind, i)
 
@@ -859,4 +887,7 @@ class Supervisor:
                 raise OSError(f"{device}: driver process {proc.name} is not running")
             return RemoteSimPort(proc, device, kind, i, baud)
 
-        return (lambda: list(ports)), opener
+        def lister():
+            return list(ports)
+        lister.usb = lambda: list(usb)            # the hub's USB device list (Hub: usb_lister)
+        return lister, opener

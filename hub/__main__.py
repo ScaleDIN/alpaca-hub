@@ -10,6 +10,7 @@ import threading
 from . import NAME, VERSION
 from .host import Hub, HubSettings, default_config_dir
 from .ports import PortInfo
+from .usbdevs import UsbDevice
 
 
 def all_drivers():
@@ -48,12 +49,15 @@ def simulated_ports(spec, drivers=None):
     """'nitecrawler,nitecrawler' -> (port lister, opener) serving simulated devices on SIM1, SIM2 …
     The names are the drivers' own (Driver.simulators)."""
     known = _simulators(drivers if drivers is not None else all_drivers())
-    sims, ports = {}, []
+    sims, ports, usb = {}, [], []
     for i, kind in enumerate(k.strip() for k in spec.split(",") if k.strip()):
         if kind not in known:
             raise SystemExit(f"--simulate: unknown device {kind!r} (known: {', '.join(sorted(known))})")
         name = f"SIM{i + 1}"
         sim, (vid, pid), serial, desc = known[kind][1](i)
+        if getattr(known[kind][0], "transport", "serial") == "usb":
+            usb.append(UsbDevice(vid, pid, name, desc, sim=sim))     # an SDK device: no serial port
+            continue
         sims[name] = sim
         ports.append(PortInfo(name, vid, pid, serial, desc))
 
@@ -62,7 +66,10 @@ def simulated_ports(spec, drivers=None):
             raise OSError(f"{device} not found")
         return sims[device].opener(device)
 
-    return (lambda: list(ports)), opener
+    def lister():
+        return list(ports)
+    lister.usb = lambda: list(usb)                # the hub's USB device list (Hub: usb_lister)
+    return lister, opener
 
 
 def pick_drivers(spec, drivers=None):
