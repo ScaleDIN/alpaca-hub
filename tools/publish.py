@@ -166,6 +166,8 @@ def main():
     ap.add_argument("--check", action="store_true", help="show what would be published and the checks, change nothing")
     ap.add_argument("--to", metavar="CLONE", help="a local clone of the public repository")
     ap.add_argument("--commit", action="store_true", help="with --to: commit the export")
+    ap.add_argument("--message", help='with --commit: the commit\'s first line (default "Release <hub version>"), '
+                                      'e.g. "README: a quick start" for a change between releases')
     a = ap.parse_args()
     if not a.check and not a.to:
         ap.error("give --check or --to")
@@ -209,7 +211,10 @@ def main():
     print(f"\nStaged in {clone}: {stat or 'no changes'}")
     if a.commit and stat:
         dev = git("rev-parse", "HEAD").strip()
-        msg = f"Release {hub_version()}\n\nThe source of Alpaca Hub {hub_version()} and its drivers.\n\n{TRAILER} {dev}\n"
+        if a.message:
+            msg = f"{a.message}\n\n{TRAILER} {dev}\n"
+        else:
+            msg = f"Release {hub_version()}\n\nThe source of Alpaca Hub {hub_version()} and its drivers.\n\n{TRAILER} {dev}\n"
         git("commit", "-q", "-F", "-", cwd=clone, input=msg)
         print(f"Committed: {git('log', '--oneline', '-1', cwd=clone).strip()} (not pushed)")
     return 0

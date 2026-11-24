@@ -7,17 +7,47 @@ programs' device lists. A device plugged in later appears within about 15 s, or 
 The Overview also charts every device's readings together on one time axis (temperatures, power, positions, dew,
 or any mix), with values of the same unit on one scale.
 
-**Status: 0.1.0, driver refactor steps 0–11 done** (REFACTOR.md).
+## Quick start
+
+1. **Download** from the [latest release](https://github.com/ScaleDIN/alpaca-hub/releases/latest): the hub,
+   `AlpacaHub-<version>-Setup.exe`, and the driver installer for each of your devices:
+
+   | Device | Alpaca devices | Installer |
+   |---|---|---|
+   | Moonlite NiteCrawler (WR25 / WR30 / WR35) | Focuser, Rotator | `AlpacaHub-nitecrawler-…-Setup.exe` |
+   | WandererBox Plus V3 | Switch, ObservingConditions | `AlpacaHub-wbox-…-Setup.exe` |
+   | WandererCover V4-EC | CoverCalibrator | `AlpacaHub-wcover-…-Setup.exe` |
+   | Optec Gemini / Hercules, FocusLynx / ThirdLynx | Focuser, Rotator | `AlpacaHub-optec-…-Setup.exe` |
+
+2. **Install the hub first**, then the drivers (Windows 10 or 11, 64-bit). The installers aren't code-signed yet,
+   so Windows may warn about an unknown publisher: *More info*, then *Run anyway*. The hub's installer offers to start
+   it when you log on, and to let phones and other computers on a private network reach it.
+3. **Plug the devices in and start the hub** (Start menu: *Alpaca Hub*). Its page opens at
+   [http://localhost:11111/](http://localhost:11111/): an Overview with every device found, a tab per device, and a
+   chart of their readings.
+4. **In your imaging program** (any ASCOM Alpaca client), let it discover Alpaca devices, or add this PC's address
+   with port 11111. Every device is there, numbered across brands (Focuser #0, #1 …), and keeps its number.
+5. **Updates:** the hub looks for new versions once a day and shows them on the Overview, where *Install* updates it
+   on the hub's PC. The Overview's *Updates* setting turns this off.
+
+The user guide (Start menu: *User guide*, or the **?** on the page) explains the page, the settings and what to do
+when a device isn't found. Moving from the devices' older standalone services? Read its *Before the first start*.
+
+What changed in each version: [CHANGES.md](CHANGES.md). MIT licence ([LICENSE](LICENSE)). Issues and pull requests
+are welcome; a new driver is a folder of its own ([docs/WRITING-DRIVERS.md](docs/WRITING-DRIVERS.md)).
+
+## For developers
+
 - **The hub is fixed; drivers are separate.** Each driver is a folder with its own installer, runs in its own process,
   and can be installed, updated or removed while the hub runs (Overview's Drivers list). A driver that crashes or
   hangs is restarted on its own; the other devices carry on.
 - Drivers: `nitecrawler` (Moonlite NiteCrawler: Focuser + Rotator), `wbox` (WandererBox Plus V3: Switch +
-  ObservingConditions), `wcover` (WandererCover V4-EC: CoverCalibrator), and `optec` (Optec FocusLynx / ThirdLynx and Gemini / Hercules, **not yet tried on hardware**), each in
-  `drivers/`. The hub itself has no driver.
-- Checked on the real devices through the hub after the refactor (2026-11-22): ConformU passes on the NiteCrawler's
-  Focuser and Rotator and the box's ObservingConditions (the box's Switch on the simulator, with only ConformU's known
-  issue for a negative minimum); the panel's driver process killed mid-move comes back with its client still
-  connected.
+  ObservingConditions), `wcover` (WandererCover V4-EC: CoverCalibrator), and `optec` (Optec FocusLynx / ThirdLynx and
+  Gemini / Hercules), each in `drivers/`. The hub itself has no driver.
+- Checked on the real devices through the hub: ConformU passes on the NiteCrawler's Focuser and Rotator, the box's
+  ObservingConditions and Switch (apart from ConformU's known issue for a switch with a negative minimum), and the
+  Hercules' Focuser and Rotator (firmware 1.3.1 and 2.0.1). The FocusLynx / ThirdLynx side is checked against its
+  simulator only. A driver process killed mid-move comes back with its client still connected.
 - `python tools/run_tests.py` runs the hub's tests and each driver folder's own (against simulators), the files side
   by side: about 1½ minutes. `python -m unittest discover -s tests` runs the same tests one after another (~6½ min).
 - **Installers**: `python packaging/build.py all` (below). **Writing a driver**: [docs/WRITING-DRIVERS.md](docs/WRITING-DRIVERS.md),

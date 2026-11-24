@@ -140,6 +140,9 @@ host.
    for running the installer). **Not yet tried:** a real installer run through Windows' prompt; that comes with the
    first real release (step 5).
 5. The release repository and a first real release (0.3.1) to try the whole path on the mini-PC.
+   **Done 2026-11-24:** the public repository exists with the 0.3.1 source (`tools/publish.py`, tests in
+   `tests/test_publish.py`) and the release `v0.3.1`; the hub's built-in address reads its list. Still to try: an
+   Install from the Overview through Windows' prompt, once a later release exists.
 6. Later, if wanted: code signing.
 
 ## Decisions for you
