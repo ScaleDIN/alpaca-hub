@@ -181,6 +181,31 @@ class InstanceTests(unittest.TestCase):
         self.assertEqual((self.inst.position, self.inst.moving_flag), (7570, False))
         self.assertEqual(self.inst.last_move["text"], "reached 7570")
 
+    def test_reopened_when_its_calls_keep_failing(self):
+        # 2026-11-25: after the driver's update restart an EFW answered every call with an undocumented error (11)
+        # until it was reopened; an error that doesn't say "gone" now counts too, after FAILS_TO_REOPEN polls.
+        from zwoeaf.eaf import EafError
+
+        class Broken:
+            def __init__(self, real):
+                self.real, self.on = real, True
+
+            def __getattr__(self, k):
+                f = getattr(self.real, k)
+                if k in ("position", "is_moving") and self.on:
+                    def fail(*a):
+                        raise EafError(99, k)
+                    return fail
+                return f
+
+        b = self.inst.sdk = Broken(self.inst.sdk)
+        self.assertTrue(wait_for(lambda: "opening it again" in (self.inst.lost or ""), 5))
+        self.assertIn("error 99", self.inst.lost)
+        self.assertFalse(self.inst.up())
+        b.on = False                                       # it answers again: back by itself, same tab
+        self.assertTrue(wait_for(self.inst.up, 10))
+        self.assertIsNone(self.inst.lost)
+
     def test_halt(self):
         self.connect()
         self.sim.speed = 500.0

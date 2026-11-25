@@ -35,6 +35,9 @@ RELOCATE_S = 2.0            # a lost focuser is looked for this often
 MIN_SPEED = 50.0            # steps/s assumed before a move has been timed: a move longer than its steps at this
 LIMIT_EXTRA_S = 30.0        # speed plus this is "not finishing"; once timed: twice the time plus this
 OURS_S = 2.0                # after a move of ours ends, steps this long still count as ours, not another program's
+FAILS_TO_REOPEN = 3         # SDK calls failing this many polls in a row (an error that doesn't say "gone"): the unit is
+                            # closed and opened again, as after an unplug. On 2026-11-25 an EFW (zwoefw) answered every call
+                            # with an undocumented error 11 after the driver's update restart, until it was reopened.
 SIM_PID = 0x1F10            # the USB PID seen on a real EAF (2026-11-24)
 
 
@@ -173,6 +176,7 @@ class EafInstance(Instance):
         self._ok_at = 0.0
         self._temp_at = 0.0
         self._lost_at = 0.0
+        self._fails = 0             # polls failing in a row (FAILS_TO_REOPEN)
         self._take(ident.get("id"))
         name = "ZWO EAF" + ("" if n == 0 else f" #{n + 1}")
         self.focuser = EafFocuser(self, ctx.uid(self.unit, "focuser"), name)
@@ -279,7 +283,12 @@ class EafInstance(Instance):
                 self._lose("not found: unplugged, or no power? (an EAF 5V can drop out on a weak USB port)")
             else:
                 self.last_error = str(e)
+                self._fails += 1
+                if self._fails >= FAILS_TO_REOPEN:
+                    self._fails = 0
+                    self._lose(f"not answering ({e}): opening it again")
             return
+        self._fails = 0
         stop_it = False
         with self._lock:
             self._ok_at = time.monotonic()

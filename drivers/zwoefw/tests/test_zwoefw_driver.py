@@ -209,6 +209,31 @@ class InstanceTests(unittest.TestCase):
         self.assertEqual(self.inst.last_move, {"text": "turn to slot 6 refused: it was already turning", "state": "bad"})
         self.assertFalse(self.inst.moving)
 
+    def test_reopened_when_its_calls_keep_failing(self):
+        # 2026-11-25: after the driver's update restart an EFW answered every call with an undocumented error 11
+        # until it was reopened; an error that doesn't say "gone" now counts too, after FAILS_TO_REOPEN polls.
+        from zwoefw.efw import EfwError
+
+        class Broken:
+            def __init__(self, real):
+                self.real, self.on = real, True
+
+            def __getattr__(self, k):
+                f = getattr(self.real, k)
+                if k in ("position", "is_moving") and self.on:
+                    def fail(*a):
+                        raise EfwError(11, k)
+                    return fail
+                return f
+
+        b = self.inst.sdk = Broken(self.inst.sdk)
+        self.assertTrue(wait_for(lambda: "opening it again" in (self.inst.lost or ""), 5))
+        self.assertIn("error 11", self.inst.lost)
+        self.assertFalse(self.inst.up())
+        b.on = False                                       # it answers again: back by itself, same tab
+        self.assertTrue(wait_for(self.inst.up, 10))
+        self.assertIsNone(self.inst.lost)
+
     def test_the_shorter_way_round_unless_one_way(self):
         self.assertEqual(self.inst.steps(0, 6), 1)
         self.inst.one_way = True

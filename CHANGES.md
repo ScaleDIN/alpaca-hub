@@ -4,6 +4,14 @@ What changed in each release of the Alpaca Hub and its drivers. Newest first. Ea
 `## <Hub | driver key> <version> (<date>)`: `packaging/build.py release` takes each new version's notes from here
 for the hub's update check, and refuses a release whose new versions have no entry.
 
+## zwoefw 0.1.2 (2026-11-25)
+- A filter wheel that keeps answering with an error (one ZWO's software doesn't explain, seen after the driver was
+  updated) is closed and opened again by itself after three tries, as after an unplug, instead of staying stuck
+  until the driver is turned off and on.
+
+## zwoeaf 0.1.4 (2026-11-25)
+- The same for the focuser: one that keeps answering with an error is closed and opened again by itself.
+
 ## zwoefw 0.1.1 (2026-11-25)
 - Choosing a filter answers at once, as imaging programs expect, while the wheel turns: on a USB hub shared with a
   busy USB serial adapter, ZWO's call to start a turn can take over a second, and the program had to wait for it.
