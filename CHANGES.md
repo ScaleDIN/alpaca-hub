@@ -4,6 +4,11 @@ What changed in each release of the Alpaca Hub and its drivers. Newest first. Ea
 `## <Hub | driver key> <version> (<date>)`: `packaging/build.py release` takes each new version's notes from here
 for the hub's update check, and refuses a release whose new versions have no entry.
 
+## zwoefw 0.1.1 (2026-11-25)
+- Choosing a filter answers at once, as imaging programs expect, while the wheel turns: on a USB hub shared with a
+  busy USB serial adapter, ZWO's call to start a turn can take over a second, and the program had to wait for it.
+- Choosing the filter that is already in place answers at once without asking the wheel.
+
 ## Hub 0.4.2 (2026-11-25)
 - With two or more units of a kind (two filter wheels, two focusers), each keeps the tab name it got the first time:
   "ZWO EFW" and "ZWO EFW #2" no longer swap depending on which one the hub finds first.

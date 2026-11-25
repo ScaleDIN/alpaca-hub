@@ -155,6 +155,60 @@ class InstanceTests(unittest.TestCase):
         self.assertEqual(self.alpaca("PUT", "position", Position="3")["ErrorNumber"], 0, "the slot it's at")
         self.assertEqual(self.status()["last_move"]["text"], "already at slot 4")
 
+    def test_position_set_answers_at_once_on_a_slow_usb_hub(self):
+        # 2026-11-25, ConformU through the installed hub: EFWSetPosition took 0.4-1.6 s on a USB hub shared with the
+        # Gemini's FTDI adapter, so Position set did too, and a request for the slot it was at looked synchronous.
+        class Slow:
+            def __init__(self, real):
+                self.real, self.calls = real, []
+
+            def set_position(self, id_, slot):
+                self.calls.append(slot)
+                time.sleep(1.0)
+                self.real.set_position(id_, slot)
+
+            def __getattr__(self, k):
+                return getattr(self.real, k)
+
+        slow = self.inst.sdk = Slow(self.inst.sdk)
+        self.connect()
+        t = time.monotonic()
+        self.assertEqual(self.alpaca("PUT", "position", Position="0")["ErrorNumber"], 0)
+        self.assertLess(time.monotonic() - t, 0.5)
+        self.assertEqual(slow.calls, [], "the slot it's at: no SDK call")
+        self.assertEqual(self.status()["last_move"]["text"], "already at slot 1")
+        t = time.monotonic()
+        self.assertEqual(self.alpaca("PUT", "position", Position="2")["ErrorNumber"], 0)
+        self.assertLess(time.monotonic() - t, 0.5, "answered before the SDK call ends")
+        for _ in range(6):                                 # while the call runs, and after: never "stopped short"
+            self.assertEqual(self.alpaca("GET", "position")["Value"], -1)
+            time.sleep(0.15)
+        self.assertEqual(self.alpaca("PUT", "position", Position="4")["ErrorNumber"], 0x40B, "not while turning")
+        self.assertTrue(wait_for(lambda: self.alpaca("GET", "position")["Value"] == 2, 5))
+        self.assertEqual(self.status()["last_move"]["text"], "reached slot 3")
+        self.assertEqual(slow.calls, [2])
+
+    def test_a_refused_turn_says_why(self):
+        from zwoefw.efw import MOVING, EfwError
+
+        class Refuses:
+            def __init__(self, real):
+                self.real = real
+
+            def set_position(self, id_, slot):
+                raise EfwError(MOVING, "EFWSetPosition")      # another program started a turn in between
+
+            def __getattr__(self, k):
+                return getattr(self.real, k)
+
+        self.inst._stop.set()                                 # no polling: only what goto and the refusal do
+        time.sleep(0.2)
+        self.inst.sdk = Refuses(self.inst.sdk)
+        self.inst.goto(5, "page")
+        self.assertTrue(wait_for(lambda: self.inst.move is None, 3))
+        self.assertEqual(self.inst.last_move, {"text": "turn to slot 6 refused: it was already turning", "state": "bad"})
+        self.assertFalse(self.inst.moving)
+
     def test_the_shorter_way_round_unless_one_way(self):
         self.assertEqual(self.inst.steps(0, 6), 1)
         self.inst.one_way = True

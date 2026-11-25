@@ -39,6 +39,7 @@ RELOCATE_S = 2.0            # a lost wheel is looked for this often
 SLOT_LIMIT_S = 3.0          # a turn longer than this per slot of the whole wheel, plus LIMIT_EXTRA_S, is "not finishing"
 LIMIT_EXTRA_S = 15.0
 OURS_S = 2.0                # after a turn of ours ends, a change this soon still counts as ours
+START_GRACE_S = 1.5         # after EFWSetPosition returns, a wheel still reading its old slot hasn't started yet
 NAME_MAX = 32
 
 
@@ -354,10 +355,15 @@ class EfwInstance(Instance):
             self.hw_error = hw
             prev, was_moving = self.position, self.moving
             moving = pos < 0
+            mv = self.move
+            if mv is not None and not moving and pos != mv["target"] and (
+                    not mv.get("sent") or (pos == mv["from"] and time.monotonic() - mv["sent"] < START_GRACE_S)):
+                # A turn of ours not started yet: its SDK call is still running (it can take a second on a busy USB
+                # hub), or the wheel hasn't begun to move. Still "turning" (-1) for the client, not "stopped short".
+                return
             self.moving = moving
             if not moving:
                 self.position = pos
-            mv = self.move
             if mv is not None:
                 took = time.monotonic() - mv["t0"]
                 if not moving:
@@ -434,21 +440,38 @@ class EfwInstance(Instance):
         if self.error_state:
             raise AlpacaError(DRIVER_ERROR, "The filter wheel reports an error state")
         pos = self.position
-        try:
-            self.sdk.set_position(self.id, slot)
-        except EfwError as e:
-            if e.code == MOVING:
-                raise AlpacaError(INVALID_OPERATION, "The filter wheel is turning: wait until it stops")
-            raise AlpacaError(DRIVER_ERROR, str(e))
         with self._lock:
             self.other = None
             if pos == slot:
+                # Already there: nothing to turn, and no SDK call (one can take over a second on a busy USB hub,
+                # which ConformU took for a synchronous Position set, 2026-11-25).
                 self.last_move = {"text": f"already at {self.label(slot)}", "state": "ok"}
-            else:
-                self.move = {"from": pos, "target": slot, "t0": time.monotonic(), "by": by}
-                self.moving = True
-                self.last_move = {"text": f"turning to {self.label(slot)}", "state": "warn"}
+                log.info("%s: already at slot %d (%s)", self.slug, slot + 1, by)
+                return
+            # Answer at once, as an Alpaca filter wheel should: Position reads -1 from now on, and the SDK call
+            # (0.2 s on a quiet USB hub, up to 1.6 s on one shared with an FTDI adapter) runs in the background.
+            mv = self.move = {"from": pos, "target": slot, "t0": time.monotonic(), "by": by, "sent": None}
+            self.moving = True
+            self.last_move = {"text": f"turning to {self.label(slot)}", "state": "warn"}
         log.info("%s: slot %s -> %d (%s)", self.slug, "?" if pos is None else pos + 1, slot + 1, by)
+        threading.Thread(target=self._send, args=(self.id, mv), name=f"{self.slug}-turn", daemon=True).start()
+
+    def _send(self, id_, mv):
+        """EFWSetPosition for a turn goto() has already answered. A refusal ends the turn with the reason on the
+        page and in the log (the client sees the wheel stop where it is)."""
+        try:
+            self.sdk.set_position(id_, mv["target"])
+        except EfwError as e:
+            with self._lock:
+                if self.move is mv:
+                    self.move = None
+                    self.moving = False
+                    why = "it was already turning" if e.code == MOVING else str(e)
+                    self.last_move = {"text": f"turn to {self.label(mv['target'])} refused: {why}", "state": "bad"}
+            log.warning("%s: turn to slot %d refused: %s", self.slug, mv["target"] + 1, e)
+            return
+        with self._lock:
+            mv["sent"] = time.monotonic()
 
     # ---------------------------------------------------------------- what the hub asks
     def up(self):
