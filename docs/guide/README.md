@@ -24,6 +24,8 @@ your imaging program over ASCOM Alpaca, and gives each device a page in your bro
 | WandererCover V4-EC flat panel | CoverCalibrator (cover, light) | `wcover` |
 | Optec Gemini / Hercules | Focuser, Rotator | `optec` |
 | Optec FocusLynx / ThirdLynx | Focuser (one or two) | `optec` |
+| ZWO EAF (and EAF 5V) | Focuser | `zwoeaf` |
+| ZWO EFW filter wheel | FilterWheel | `zwoefw` |
 
 Another device can have its driver added without changing the hub: see
 [Writing a driver](../WRITING-DRIVERS.md).

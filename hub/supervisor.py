@@ -118,9 +118,13 @@ class RemoteDriver:
         if not self.proc.running:
             return None
         self._present = list(present)
-        sims = [[u.instance, u.sim_name, u.sim_index] for u in present if u.sim_name]
+        # Simulated (a --simulate hub lists only simulators): only this driver's own, and a list even when empty, so
+        # the driver never falls back to the real SDK there. With the EAF and the EFW simulated together, each ZWO
+        # driver was handed the other's simulator and gave up ("no simulator 'efw'"), so neither found anything.
+        simulated = any(u.sim_name for u in present)
+        sims = [[u.instance, u.sim_name, u.sim_index] for u in present if u.sim_name and u.sim_name in self.simulators]
         try:
-            r = self.proc.call("find", self.key, sims if sims else None, timeout=T_PROBE)
+            r = self.proc.call("find", self.key, sims if simulated else None, timeout=T_PROBE)
         except Exception as e:
             log.debug("%s: find failed: %s", self.key, e)
             return None

@@ -1,4 +1,4 @@
-// The hub Overview's chart: every device's history on one time axis (device-web-ui kit v14). Endpoints: /hub.json and
+// The hub Overview's chart: every device's history on one time axis (device-web-ui kit v16). Endpoints: /hub.json and
 // each device's own /<slug>/history.json (res=s: 1 s samples for 10 min; res=m: 10-second averages with each value's
 // lowest and highest, <key>_min / <key>_max, drawn as a band; older drivers: 1-minute averages), and before what
 // the device holds in memory, its day files (/hub/history…): so the chart goes back past a restart of the hub or PC.
@@ -50,11 +50,28 @@ function merge(which, hold, bucket) {
   });
   return out;
 }
+/* Held values (positions, set levels: the device's res=m "held"): from each one's first logged change on, its exact
+   changes (res=c) instead of the steps' values, as records of their own; the chart carries them (kit v16 hold). */
 function combine() {
   if (!chart) return;
   const start = Math.min(...devs.map((d) => (d.fine.length ? d.fine[0].t : Infinity)));
-  const coarse = merge('coarse', HOLD_COARSE, (t) => Math.floor(t / 10) * 10).filter((r) => r.t < start);   // 10 s steps
-  chart.set(coarse.concat(merge('fine', HOLD_FINE, Math.floor)));
+  const extra = [];
+  devs.forEach((d) => {
+    const first = {};
+    d.changes.forEach(([t, k, v]) => {
+      if (!(k in first)) first[k] = t;
+      if (t < start && d.keys.includes(k)) extra.push({ t, [d.slug + '.' + k]: v });
+    });
+    d.coarseH = d.coarse.map((r) => {
+      const c = Object.assign({}, r);
+      Object.keys(first).forEach((k) => { if (r.t + 10 > first[k]) { delete c[k]; delete c[k + '_min']; delete c[k + '_max']; } });
+      return c;
+    });
+  });
+  const coarse = merge('coarseH', HOLD_COARSE, (t) => Math.floor(t / 10) * 10).filter((r) => r.t < start);   // 10 s steps
+  const byT = new Map(coarse.map((r) => [r.t, r]));
+  const own = extra.filter((x) => (byT.has(x.t) ? (Object.assign(byT.get(x.t), x), false) : true));   // same time: one record
+  chart.set(coarse.concat(own).sort((a, b) => a.t - b.t).concat(merge('fine', HOLD_FINE, Math.floor)));
 }
 
 async function loadFine(d) {
@@ -68,7 +85,13 @@ async function loadFine(d) {
 async function loadCoarse(d) {
   try {
     const since = d.coarse.length ? d.coarse[d.coarse.length - 1].t : 0;
-    d.coarse = d.coarse.concat(recs(await K.getJSON(`/${d.slug}/history.json?res=m` + (since ? '&since=' + since : ''))));
+    const h = await K.getJSON(`/${d.slug}/history.json?res=m` + (since ? '&since=' + since : ''));
+    d.coarse = d.coarse.concat(recs(h));
+    if (h.held && h.held.length) {   // held values: their exact changes too
+      d.held = h.held;
+      const cs = d.changes.length ? d.changes[d.changes.length - 1][0] : 0;
+      d.changes = d.changes.concat((await K.getJSON(`/${d.slug}/history.json?res=c` + (cs ? '&since=' + cs : ''))).rows || []);
+    }
   } catch (e) {}
 }
 
@@ -148,6 +171,7 @@ function build() {
     range: 1,
     store: 'hubchart',
     bands: true,                                     // each step's lowest-highest around its line (kit v12)
+    hold: devs.flatMap((d) => d.held.map((k) => d.slug + '.' + k)).filter((id) => series[id]),   // exact steps (kit v16)
     empty: () => 'No samples in this range yet.',
     png: { name: 'alpaca-hub' },
     csv: { name: 'alpaca-hub', cols: order.map(([id]) => [id, id.replace('.', '_')]) },
@@ -163,7 +187,7 @@ async function devices() {
 }
 async function start() {
   try { devs = await devices(); } catch (e) { devs = []; }
-  devs.forEach((d) => { d.keys = Object.keys(KINDS[d.kind]); d.fine = []; d.coarse = []; });
+  devs.forEach((d) => { d.keys = Object.keys(KINDS[d.kind]); d.fine = []; d.coarse = []; d.coarseH = []; d.changes = []; d.held = []; });
   $('live').style.display = devs.length ? '' : 'none';     // no device: only the saved files below
   await Promise.all(devs.map((d) => Promise.all([loadCoarse(d), loadFine(d)])));
   await loadOld();
@@ -184,7 +208,9 @@ async function start() {
 // Day files in the drivers' <unit>-history folders (hub/recorder.py writes them for every device but the box, which
 // writes its own), there with or without the device; and any CSV opened from this PC (a day file, or a chart's CSV
 // download), plotted below.
-const NAMES = { wbox: 'Power box', nitecrawler: 'NiteCrawler', wcover: 'Flat panel', focuslynx: 'FocusLynx', gemini: 'Gemini' };
+// Saved history's fallback names, for folders without a device.json (written before 2026-11-24, or the box's own)
+const NAMES = { wbox: 'Power box', nitecrawler: 'NiteCrawler', wcover: 'Flat panel', focuslynx: 'FocusLynx', gemini: 'Gemini',
+  zwoeaf: 'ZWO EAF', zwoefw: 'ZWO EFW' };
 const enc = encodeURIComponent, esc = K.esc;
 const size = (b) => (b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' kB');
 let savedSig = '', stale = false;
@@ -205,7 +231,7 @@ async function saved() {
     const base = `/hub/history/${enc(u.driver)}/${enc(u.unit)}`, id = u.driver + '/' + u.unit;
     const files = u.files.slice().reverse();                 // newest first
     const total = u.files.reduce((a, f) => a + f.bytes, 0);
-    return `<details data-u="${esc(id)}"${open.has(id) || list.length == 1 ? ' open' : ''}><summary><b>${esc(NAMES[u.driver] || u.driver)}</b> · ${esc(u.unit)}
+    return `<details data-u="${esc(id)}"${open.has(id) || list.length == 1 ? ' open' : ''}><summary><b>${esc(u.title || NAMES[u.driver] || u.driver)}</b> · ${esc(u.unit)}
       <span class="mut">— ${files.length} file${files.length == 1 ? '' : 's'}, ${size(total)}</span></summary>
       <p class="hrow"><a href="${base}.zip" download>Download all (.zip)</a><code class="mut">${esc(u.folder)}</code>${opener(`data-driver="${esc(u.driver)}" data-unit="${esc(u.unit)}"`)}</p>
       ${files.map((f) => `<p class="hrow"><span>${esc(f.name)}</span><span class="mut">${size(f.bytes)}</span>

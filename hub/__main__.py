@@ -56,7 +56,7 @@ def simulated_ports(spec, drivers=None):
         name = f"SIM{i + 1}"
         sim, (vid, pid), serial, desc = known[kind][1](i)
         if getattr(known[kind][0], "transport", "serial") == "usb":
-            usb.append(UsbDevice(vid, pid, name, desc, sim=sim))     # an SDK device: no serial port
+            usb.append(UsbDevice(vid, pid, name, desc, sim=sim, sim_name=kind))     # an SDK device: no serial port
             continue
         sims[name] = sim
         ports.append(PortInfo(name, vid, pid, serial, desc))

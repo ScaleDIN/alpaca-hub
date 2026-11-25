@@ -99,15 +99,16 @@ function makeChart() {
     gapS: 150,
     store: 'chart-zwoeaf',
     bands: true,
+    hold: ['pos'],               // held values: exact changes, drawn as steps (kit v16)
     empty: () => 'No samples yet: the hub logs once a second while the focuser answers.',
     png: { name: 'zwoeaf' },
     csv: { name: 'zwoeaf', cols: [['pos', 'position_steps'], ['temp', 'temperature_C']] },
   });
   combine();
 }
-let fine = [], coarse = [];
+let fine = [], coarse = [], changes = [];
 const recs = (h) => h.rows.map((r) => { const o = { t: r[0] }; h.keys.forEach((k, i) => { o[k] = r[i + 1]; }); return o; });
-function combine() { if (!chart) return; const start = fine.length ? fine[0].t : Infinity; chart.set(coarse.filter((r) => r.t < start).concat(fine)); }
+function combine() { if (!chart) return; chart.set(K.histJoin(coarse, fine, changes)); }
 async function loadFine() {
   try {
     const since = fine.length ? fine[fine.length - 1].t : 0;
@@ -121,6 +122,8 @@ async function loadCoarse() {
   try {
     const since = coarse.length ? coarse[coarse.length - 1].t : 0;
     coarse = coarse.concat(recs(await K.getJSON('history.json?res=m' + (since ? '&since=' + since : ''))));
+    const cs = changes.length ? changes[changes.length - 1][0] : 0;   // held values' changes (res=c)
+    changes = changes.concat((await K.getJSON('history.json?res=c' + (cs ? '&since=' + cs : ''))).rows || []);
     combine();
   } catch (e) {}
 }

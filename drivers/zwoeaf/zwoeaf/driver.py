@@ -12,6 +12,7 @@ that has it, and a move still running long after its steps should have taken ("n
 """
 import logging
 import os
+import re
 import threading
 import time
 
@@ -90,6 +91,9 @@ class ZwoEafDriver(Driver):
             serial = sdk.serial(id_)
             ident = {"serial": serial or f"{info['name']}-ID{id_}", "name": info["name"], "id": id_,
                      "has_serial": bool(serial), "firmware": sdk.firmware(id_), "kind": sdk.kind(id_)}
+            m = re.fullmatch(r"\s*[^()]*\((.+)\)\s*", info["name"] or "")
+            if m and m.group(1).strip():
+                ident["alias"] = m.group(1).strip()   # ZWO's custom ID, in the name: "EAF(alias)"; the hub shows it
             pid = getattr(next((u for u in getattr(sdk, "units", ()) if u.sdk_id == id_), None), "pid", None)
             if pid is not None:
                 ident["pid"] = pid
@@ -523,7 +527,7 @@ class EafApp(App):
 
     def __init__(self, inst):
         self.inst = inst
-        self.history = History(["pos", "temp"])
+        self.history = History(["pos", "temp"], held=("pos",))
 
     def status(self):
         i = self.inst

@@ -99,20 +99,30 @@ class AlpacaDevice:
 
 STEP_S = 10            # history.json?res=m: averages over this many seconds (1 minute before 2026-11-24)
 KEEP_S = 24 * 3600     # how long they are kept
+CHANGES_MAX = 50000    # held keys' changes kept at most (a focuser moving all day: one per second while it moves)
 
 
 class History:
     """1 s samples for 10 minutes and 10-second averages for 24 hours, in memory. history.json?res=m gives the
     averages (named when they were 1-minute ones; the reply's "step" says how long they are, each dated at its
     start), and after the keys each one's lowest and highest 1 s sample in the step (<key>_min, then <key>_max), so
-    a spike the average hides still shows. The hub's day files make 1-minute rows of them (hub/recorder.py)."""
+    a spike the average hides still shows. The hub's day files make 1-minute rows of them (hub/recorder.py).
 
-    def __init__(self, keys, step=STEP_S):
+    held: keys that sit at a value and jump (positions, a filter slot, an angle), where an average would be a value
+    the device never had. For those the step gives its last reading instead of the average, and every change is
+    logged exactly: history.json?res=c -> {"keys": held, "rows": [[t, key, value], ...]} (value null: no reading),
+    for the same 24 hours. res=m names them in "held". Pages draw them as steps (kit v16 hold)."""
+
+    def __init__(self, keys, step=STEP_S, held=()):
         self.keys = list(keys)
         self.step = step
+        self.held = [k for k in held if k in self.keys]
+        self._hi = {self.keys.index(k) for k in self.held}
         self._lock = threading.Lock()
         self.fine = deque(maxlen=600)
         self.coarse = deque(maxlen=KEEP_S // step)
+        self.changes = deque(maxlen=CHANGES_MAX)
+        self._seen = {}        # held key -> its last reading (a change is logged when it differs)
         self._minute = None    # the step being averaged (named when it was a minute)
         self._acc = []
         self._last_t = 0
@@ -125,10 +135,17 @@ class History:
             self._last_t = t
             row = [values.get(k) for k in self.keys]
             self.fine.append([t] + row)
+            for k in self.held:
+                v = values.get(k)
+                if k not in self._seen or self._seen[k] != v:
+                    self._seen[k] = v
+                    self.changes.append([t, k, v])
+            while self.changes and self.changes[0][0] < t - KEEP_S:
+                self.changes.popleft()
             m = t // self.step
             if self._minute is not None and m != self._minute and self._acc:
                 n = range(len(self.keys))
-                self.coarse.append([self._minute * self.step] + [self._avg(i) for i in n]
+                self.coarse.append([self._minute * self.step] + [self._last(i) if i in self._hi else self._avg(i) for i in n]
                                    + [self._ext(i, min) for i in n] + [self._ext(i, max) for i in n])
                 self._acc = []
             self._minute = m
@@ -138,19 +155,25 @@ class History:
         vals = [r[i] for r in self._acc if r[i] is not None]
         return round(sum(vals) / len(vals), 2) if vals else None
 
+    def _last(self, i):
+        vals = [r[i] for r in self._acc if r[i] is not None]
+        return vals[-1] if vals else None
+
     def _ext(self, i, fn):
         vals = [r[i] for r in self._acc if r[i] is not None]
         return round(fn(vals), 2) if vals else None
 
     def get(self, res, since=None):
         with self._lock:
-            rows = list(self.fine if res == "s" else self.coarse)
+            rows = list(self.fine if res == "s" else self.changes if res == "c" else self.coarse)
         if since is not None:
             rows = [r for r in rows if r[0] > since]
         if res == "s":
             return {"keys": self.keys, "rows": rows, "step": 1}
+        if res == "c":
+            return {"keys": self.held, "rows": rows}
         return {"keys": self.keys + [k + "_min" for k in self.keys] + [k + "_max" for k in self.keys], "rows": rows,
-                "step": self.step}
+                "step": self.step, "held": self.held}
 
 
 class App:

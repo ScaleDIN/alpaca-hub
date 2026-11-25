@@ -311,6 +311,144 @@ class HubTests(unittest.TestCase):
         self.assertIs(json.loads(self.get(h, "/hub.json")[1])["tab_order_saved"], False)
         self.assertEqual(H.HubSettings.load(h.settings.path).tab_order, [])
 
+    # ---------------------------------------------------------------- tab numbers
+    def test_tab_numbers_are_remembered(self):
+        # 2026-11-24: two EFWs swapped tabs depending on which serial sorted first. A unit keeps the tab it got first.
+        self.bench.add_nc("COM11", "30000")
+        h = self.new_hub()
+        h.scan_once()
+        self.assertEqual(sorted(h.instances), ["nitecrawler"])
+        h.stop()
+        self.hubs.remove(h)
+        self.bench.add_nc("COM10", "25905")               # found first now (COM10 < COM11): still the second tab
+        h = self.new_hub()
+        h.scan_once()
+        self.assertEqual({s: i.port.device for s, i in h.instances.items()},
+                         {"nitecrawler": "COM11", "nitecrawler-2": "COM10"})
+        self.assertEqual(h.settings.units["nitecrawler"], {"30000": 0, "25905": 1})
+
+    def test_renumber_tabs(self):
+        for com, serial in (("COM10", "25905"), ("COM11", "30000"), ("COM12", "31000")):
+            self.bench.add_nc(com, serial)
+        h = self.new_hub()
+        h.scan_once()
+        self.assertEqual(sorted(h.instances), ["nitecrawler", "nitecrawler-2", "nitecrawler-3"])
+        self.assertEqual(h.units_json()["nitecrawler"]["tidy"], True)
+        h.set_tab_order(["nitecrawler-3", "box", "nitecrawler-2", "nitecrawler"])
+        h.stop()
+        self.hubs.remove(h)
+        del self.bench.ports["COM10"]                     # the first one is gone for good
+        h = self.new_hub()
+        h.scan_once()
+        self.assertEqual(sorted(h.instances), ["nitecrawler-2", "nitecrawler-3"], "they keep their tabs")
+        u = json.loads(self.get(h, "/hub.json")[1])["units"]["nitecrawler"]
+        self.assertEqual((u["present"], u["absent"], u["tidy"]), (2, 1, False))
+
+        def post(body, page=True):
+            req = urllib.request.Request(f"http://127.0.0.1:{h.port}/hub/units/renumber", method="POST", data=body,
+                                         headers={"X-Hub-Page": "1"} if page else {})
+            try:
+                with urllib.request.urlopen(req, timeout=10) as r:
+                    return r.status, json.loads(r.read())
+            except urllib.error.HTTPError as e:
+                text = e.read().decode()
+                return e.code, json.loads(text) if text.startswith("{") else text
+        self.assertEqual(post(b"key=nitecrawler", page=False)[0], 403)
+        h.note_client("nitecrawler-2", "focuser", 1, "connected", "PUT", b"Connected=True")
+        self.assertTrue(h.units_json()["nitecrawler"]["in_use"])
+        code, r = post(b"key=nitecrawler")
+        self.assertEqual(code, 409, "not while a client is connected")
+        self.assertIn("disconnect it first", r["message"])
+        h.note_client("nitecrawler-2", "focuser", 1, "connected", "PUT", b"Connected=False")
+        code, r = post(b"key=nitecrawler")
+        self.assertEqual(code, 200)
+        self.assertEqual(r["message"], "Forgot 1 unit not plugged in; 2 devices starting again under a new tab")
+        self.assertEqual(h.settings.units["nitecrawler"], {"30000": 0, "31000": 1})
+        self.assertEqual(h.settings.tab_order, ["nitecrawler-2", "box", "nitecrawler"], "each keeps its place")
+        h.scan_once()
+        self.assertEqual({s: i.port.device for s, i in h.instances.items()},
+                         {"nitecrawler": "COM11", "nitecrawler-2": "COM12"})
+        self.assertTrue(h.units_json()["nitecrawler"]["tidy"])
+        self.assertEqual(post(b"key=nitecrawler")[1]["message"], "Already in order")
+
+    def test_device_names(self):
+        self.bench.add_nc("COM11", "30000")
+        h = self.new_hub()
+        h.scan_once()
+        dev = lambda: json.loads(self.get(h, "/hub.json")[1])["devices"][0]
+        usual = dev()["title"]
+        self.assertEqual((dev()["usual_title"], dev()["named"]), (usual, False))
+
+        def post(**form):
+            req = urllib.request.Request(f"http://127.0.0.1:{h.port}/hub/devices/name", method="POST",
+                                         data=urllib.parse.urlencode(form).encode(), headers={"X-Hub-Page": "1"})
+            try:
+                with urllib.request.urlopen(req, timeout=10) as r:
+                    return r.status
+            except urllib.error.HTTPError as e:
+                return e.code
+        self.assertEqual(post(slug="nitecrawler", name="  Main   scope  focuser " + "x" * 40), 200)
+        self.assertEqual(dev()["title"], ("Main scope focuser " + "x" * 40)[:40], "spaces tidied, 40 characters")
+        self.assertTrue(dev()["named"])
+        self.assertEqual(post(slug="nope", name="x"), 404)
+        self.assertEqual(post(slug="nitecrawler", name="Main scope"), 200)
+        # Saved history shows it, and the recorder leaves it beside the files
+        self.assertEqual(h.display_title(h.instances["nitecrawler"]), "Main scope")
+        h.stop()
+        self.hubs.remove(h)
+        h = self.new_hub()                                # kept by the unit (its serial), not the tab
+        h.scan_once()
+        self.assertEqual(dev()["title"], "Main scope")
+        # the device's own stored name (alias) when the user gave none
+        self.assertEqual(post(slug="nitecrawler", name=""), 200)
+        self.assertEqual(dev()["title"], usual)
+        h.instances["nitecrawler"].ident["alias"] = "Guide scope"
+        self.assertEqual(dev()["title"], "Guide scope")
+        self.assertEqual(post(slug="nitecrawler", name="Mine"), 200)
+        self.assertEqual(dev()["title"], "Mine", "a name given in the hub wins over the alias")
+
+    def test_renumber_alpaca_numbers(self):
+        self.bench.add_nc("COM10", "25905")
+        self.bench.add_nc("COM11", "30000")
+        h = self.new_hub()
+        h.scan_once()
+        self.assertTrue(h.alpaca_numbers_json()["tidy"])
+        h.stop()
+        self.hubs.remove(h)
+        del self.bench.ports["COM10"]                     # the first one is gone for good
+        h = self.new_hub()
+        h.scan_once()
+        self.assertEqual([(r["type"], r["number"]) for r in h.device_table()], [("focuser", 1), ("rotator", 1)])
+        a = json.loads(self.get(h, "/hub.json")[1])["alpaca_numbers"]
+        self.assertEqual((a["tidy"], a["absent"], len(a["changes"])), (False, 2, 2))
+        self.assertIn("focuser #1 → #0", a["changes"][0])
+        req = urllib.request.Request(f"http://127.0.0.1:{h.port}/hub/alpaca/renumber", method="POST", data=b"")
+        with self.assertRaises(urllib.error.HTTPError) as e:
+            urllib.request.urlopen(req, timeout=10)
+        self.assertEqual(e.exception.code, 403)
+        h.note_client("nitecrawler-2", "focuser", 1, "connected", "PUT", b"Connected=True")
+        ok, msg = h.renumber_alpaca()
+        self.assertFalse(ok, "not while a client is connected")
+        h.note_client("nitecrawler-2", "focuser", 1, "connected", "PUT", b"Connected=False")
+        req = urllib.request.Request(f"http://127.0.0.1:{h.port}/hub/alpaca/renumber", method="POST", data=b"",
+                                     headers={"X-Hub-Page": "1"})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            msg = json.loads(r.read())["message"]
+        self.assertIn("2 devices renumbered", msg)
+        self.assertIn("forgot the numbers of 2 devices not here", msg)
+        self.assertEqual([(r["type"], r["number"]) for r in h.device_table()], [("focuser", 0), ("rotator", 0)])
+        self.assertEqual(len(h.settings.numbers), 2)
+        self.assertTrue(h.alpaca_numbers_json()["tidy"])
+        code, body = self.get(h, "/api/v1/focuser/0/name?ClientID=1&ClientTransactionID=1")
+        self.assertEqual(code, 200)
+        self.assertEqual(self.get(h, "/api/v1/focuser/1/name?ClientID=1&ClientTransactionID=1")[0], 400)
+        # it stays: a new hub run keeps #0
+        h.stop()
+        self.hubs.remove(h)
+        h = self.new_hub()
+        h.scan_once()
+        self.assertEqual([(r["type"], r["number"]) for r in h.device_table()], [("focuser", 0), ("rotator", 0)])
+
     # ---------------------------------------------------------------- numbering
     def test_public_numbers_are_stable(self):
         self.bench.add_nc("COM10", "25905")
@@ -428,6 +566,13 @@ class HubTests(unittest.TestCase):
         self.assertEqual(json.loads(self.get(h, "/hub.json")[1])["devices"], [])
         listing = json.loads(self.get(h, "/hub/history.json")[1])["units"]
         self.assertEqual([(u["driver"], u["unit"]) for u in listing], [("wbox", "COM15")])
+        self.assertIsNone(listing[0]["title"], "no device.json: the page falls back to the kind's name")
+        from hub.recorder import write_title
+        self.assertTrue(write_title(folder, "Power box #2"))       # as the recorder leaves it
+        listing = json.loads(self.get(h, "/hub/history.json")[1])["units"]
+        self.assertEqual(listing[0]["title"], "Power box #2", "kept for a device that isn't here")
+        self.assertEqual([f["name"] for f in listing[0]["files"]],
+                         ["wbstock-history-2026-11-21.csv", "wbstock-history-2026-11-22.csv"], "not a day file")
         self.assertEqual([f["name"] for f in listing[0]["files"]],
                          ["wbstock-history-2026-11-21.csv", "wbstock-history-2026-11-22.csv"])
         url = f"http://127.0.0.1:{h.port}/hub/history/wbox/COM15/wbstock-history-2026-11-22.csv"
@@ -490,6 +635,7 @@ class HubTests(unittest.TestCase):
         listing = json.loads(self.get(h, "/hub/history.json")[1])["units"]
         self.assertEqual([(u["driver"], [f["name"] for f in u["files"]]) for u in listing],
                          [("wbox", ["wbstock-history-2026-11-23.csv"])])
+        self.assertEqual(listing[0]["title"], "Power box", "the running device's name")
         # the Overview finds a device's day files by hub.json's unit (its chart reads them back)
         dev = json.loads(self.get(h, "/hub.json")[1])["devices"][0]
         self.assertEqual((dev["kind"], dev["unit"]), (listing[0]["driver"], listing[0]["unit"]))
@@ -734,14 +880,19 @@ class HubTests(unittest.TestCase):
         self.assertEqual(sorted(h.instances), ["box-2", "box-3", "nitecrawler-2", "nitecrawler-3"])
         self.bench.add_box("COM18")
         self.bench.add_nc("COM13", "50000")
-        h.scan_once()           # the lowest free number again: #1
+        h.scan_once()           # #1 stays the dropped units' (remembered, for when they come back): these get #4
         self.assertEqual(sorted(h.instances),
-                         ["box", "box-2", "box-3", "nitecrawler", "nitecrawler-2", "nitecrawler-3"])
-        self.assertEqual((h.instances["box"].port.device, h.instances["box"].title), ("COM18", "Power box"))
-        self.assertEqual(h.instances["nitecrawler"].port.device, "COM13")
+                         ["box-2", "box-3", "box-4", "nitecrawler-2", "nitecrawler-3", "nitecrawler-4"])
+        self.assertEqual((h.instances["box-4"].port.device, h.instances["box-4"].title), ("COM18", "Power box #4"))
+        self.assertEqual(h.instances["nitecrawler-4"].port.device, "COM13")
         self.assertIs(h.instances["box-2"], second_box)
         self.assertIs(h.instances["nitecrawler-2"], second_nc)
         self.assertEqual(h.instances["box-3"].title, "Power box #3")
+        # Overview's Renumber tabs: the dropped ones are forgotten and the rest close up, in their order
+        self.assertTrue(h.renumber_units("wbox")[0])
+        h.scan_once()
+        self.assertEqual({s: i.port.device for s, i in h.instances.items() if i.driver.key == "wbox"},
+                         {"box": "COM16", "box-2": "COM17", "box-3": "COM18"})
 
     def test_a_clashing_slug_never_replaces_a_running_device(self):
         self.bench.add_box("COM15")

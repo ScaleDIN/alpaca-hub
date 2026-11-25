@@ -213,7 +213,7 @@ Your folder's `ui\body.html`, `ui\device.js` and `ui\device.css` become one page
 | Endpoint (relative: the page lives at `/<slug>/` behind the hub) | Your `App` |
 |---|---|
 | `status.json` | `status()` returns a dict; DeviceServer adds `build`, `uptime`, `simulated`, `client`, `local`, `urls` |
-| `history.json` | set `self.history = History([...])` and `add()` samples (1 s for 10 min; 10 s averages with each value's lowest and highest, `<key>_min` / `<key>_max`, for 24 h; the hub writes 1-minute day files of them) |
+| `history.json` | set `self.history = History([...])` and `add()` samples (1 s for 10 min; 10 s averages with each value's lowest and highest, `<key>_min` / `<key>_max`, for 24 h; the hub writes 1-minute day files of them). Values that sit and jump (a position, a filter slot, a set level): `History([...], held=(...))` gives their last reading instead of an average and logs every change exactly (`?res=c`), drawn as steps |
 | `POST control` | `control(form)` returns `(http code, message)`. The page must send the header `X-Hub-Page: 1`. While an Alpaca client is connected it is refused unless the page sends `override=1` (an Unlock button): changing things under a running imaging sequence should be deliberate |
 | anything else | `route(req)` returns `(code, body, content type[, headers])` or `None` |
 

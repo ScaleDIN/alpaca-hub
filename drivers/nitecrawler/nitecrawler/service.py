@@ -31,7 +31,7 @@ def signed180(d):
 def History():
     """The chart's history: the hub's (1 s for 10 minutes, 10-second averages for 24 hours, in memory). This driver
     had its own copy with 1-minute averages until 1.0.1."""
-    return _HubHistory(CHART_KEYS)
+    return _HubHistory(CHART_KEYS, held=("focus", "rot", "aux"))
 
 
 class Service:

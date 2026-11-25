@@ -13,4 +13,4 @@ compensation, network settings). Optec warns that a wrong device type can damage
 moves, halt, home, sync and the rotator's reverse (which Alpaca asks for) are ever sent.
 """
 
-VERSION = "1.0.3"   # keep equal to ../driver.json (the contract tests check it)
+VERSION = "1.0.4"   # keep equal to ../driver.json (the contract tests check it)

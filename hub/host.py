@@ -26,11 +26,11 @@ from .core.net import route_address as _route_address
 from .core.page import Page
 
 from . import NAME, VERSION
-from .api import API_VERSION, HubContext
+from .api import API_VERSION, HubContext, unit_of
 from .api import _safe
 from .ports import PortInfo, list_ports, open_port
 from .usbdevs import list_usb
-from .recorder import Recorder, clamp_days, history_unit
+from .recorder import Recorder, clamp_days, history_unit, read_title
 from .relay import LocalLink, PortRelay, RelaySerial
 from .shell import shell_page
 from .updates import Updates
@@ -45,6 +45,7 @@ LISTEN_S = 2.5       # listen this long on a port before anything is sent to it
 RETRY_S = 60.0       # a port nobody recognised is looked at again after this long
 GONE_S = 60.0        # a device whose port has been missing this long is dropped (page and Alpaca)
 MAX_TAB_ORDER = 100   # slugs kept in the tab_order setting
+NAME_MAX = 40         # a device name given on the Overview
 _SLUG_RE = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}")
 TABLE_S = 2.0        # how long the merged device table is cached
 IDENTIFY_EXTRA_S = 10.0  # a port's identification may take this long beyond its listening before it counts as stuck
@@ -65,19 +66,34 @@ def default_config_dir():
     return os.path.join(base, "alpaca-hub")
 
 
+def _slug_base(slug, number):
+    """The slug a driver gives its first unit, from one of its units' slugs ("zwoefw-2", 1 -> "zwoefw"), for the
+    usual naming (first: <base>, then <base>-2 ...); None when a slug doesn't follow it."""
+    if not isinstance(number, int):
+        return None
+    if number == 0:
+        return slug
+    suffix = f"-{number + 1}"
+    return slug[:-len(suffix)] if slug.endswith(suffix) and len(slug) > len(suffix) else None
+
+
 class HubSettings:
     # "primary" is from before hub API 1 (the first unit of each driver); only read now, to find old settings files
     # "api": the hub API the saved numbers belong to (0: before hub API 1, when UniqueIDs were made differently)
     # "drivers_off": drivers turned off on Overview's Drivers list (they aren't started)
     FIELDS = {"http_port": 11111, "bind": "0.0.0.0", "numbers": {}, "primary": {}, "location": "", "api": 0,
               "drivers_off": [], "ports_ignored": [], "history_days": 7, "update_check": True,
-              "tab_order": []}
+              "tab_order": [], "units": {}, "names": {}}
     # "ports_ignored": ports ignored on Overview, as {"device", "vid", "pid", "serial", "description"}: one with a USB
     # serial number is matched by it (whatever its COM number), else by its COM port
     # "history_days": how long the day files the hub writes for each device are kept (hub/recorder.py)
     # "update_check": the Overview's "Check for updates online" (hub/updates.py); off, the hub sends nothing
     # "tab_order": the device tabs' order as dragged on the status page, as slugs (Hub.ordered_instances); a slug
     # not present now keeps its place for when it comes back
+    # "units": {driver key: {unit: number}}: each unit's tab number (0: "ZWO EFW", 1: "ZWO EFW #2" ...), given the
+    # first time the unit is seen and kept, like the Alpaca numbers (Hub.tab_number; Overview's Renumber tabs)
+    # "names": {driver key: {unit: name}}: a name the user gave a device on the Overview (Rename), shown instead of
+    # its usual title on its tab, its card and in Saved history (Hub.display_title)
 
     def __init__(self, path):
         self.path = path
@@ -163,6 +179,7 @@ class Hub:
         self._wake = threading.Event()
         self.recorder = Recorder(self.config_dir, self._instance_list, days=lambda: self.settings.history_days,
                                  set_days=self._history_days_from_device)
+        self.recorder.title_of = self.display_title   # Saved history's names (device.json)
         self.show_folder = _show_folder       # the Overview's Open folder (a stand-in in the tests)
         # The update check: a simulated hub only checks when it's given a feed address (the tests, a trial run).
         self.updates = Updates(self.config_dir, url=update_feed, installed=self._installed_drivers,
@@ -408,6 +425,143 @@ class Hub:
             n += 1
         return n
 
+    def _units(self, key):
+        u = self.settings.units if isinstance(self.settings.units, dict) else {}
+        self.settings.units = u
+        m = u.get(key)
+        if not isinstance(m, dict):
+            m = u[key] = {}
+        for k in [k for k, v in m.items() if type(v) is not int or v < 0]:
+            del m[k]                       # a hand-edited file
+        return m
+
+    def tab_number(self, key, unit):
+        """The tab number for one unit of a driver: the one it was given the first time it was seen (saved in the
+        "units" setting), so its tab keeps its name (and its saved place among the tabs) whatever order the units
+        are found in, as its Alpaca numbers do. A new unit gets the lowest number neither running nor remembered
+        for another unit. Before, it was only the lowest free one at start (free_number), so two EFWs swapped tabs
+        depending on which serial sorted first (2026-11-24)."""
+        with self._lock:
+            m = self._units(key)
+            running = {getattr(i, "number", None) for i in self.instances.values() if i.driver.key == key}
+            n = m.get(unit)
+            if n is None or n in running:
+                taken = running | {v for k, v in m.items() if k != unit}
+                n = 0
+                while n in taken:
+                    n += 1
+            if m.get(unit) != n:
+                m[unit] = n
+                self._save()
+            return n
+
+    def _names(self, key):
+        n = self.settings.names if isinstance(self.settings.names, dict) else {}
+        self.settings.names = n
+        m = n.get(key)
+        if not isinstance(m, dict):
+            m = n[key] = {}
+        return m
+
+    def display_title(self, inst):
+        """The name shown for a device: the one the user gave it on the Overview; else the name stored in the
+        device itself (its "alias", set with its maker's software; the driver reports it); else its usual title
+        ("ZWO EFW #2")."""
+        key, unit = inst.driver.key, unit_of(inst.ident, inst.port)
+        n = self.settings.names.get(key, {}) if isinstance(self.settings.names, dict) else {}
+        name = n.get(unit) if isinstance(n, dict) else None
+        if isinstance(name, str) and name.strip():
+            return name.strip()
+        alias = (inst.ident or {}).get("alias")
+        if isinstance(alias, str) and alias.strip():
+            return alias.strip()
+        return inst.title
+
+    def set_device_name(self, slug, name):
+        """Overview's Rename: name (up to NAME_MAX characters) for the device on tab slug, or "" for its usual
+        title again. -> (ok, message)"""
+        with self._lock:
+            inst = self.instances.get(slug)
+            if inst is None:
+                return False, "No such device"
+            name = " ".join(str(name or "").split())[:NAME_MAX]
+            m = self._names(inst.driver.key)
+            unit = unit_of(inst.ident, inst.port)
+            if name:
+                m[unit] = name
+            else:
+                m.pop(unit, None)
+            self._save()
+        log.info("%s: named %r", slug, name or "(its usual title)")
+        return True, f"Named {name}" if name else "Back to its usual name"
+
+    def units_json(self):
+        """hub.json's "units": per driver with remembered units, how many are here, how many remembered ones
+        aren't, and whether the numbers are already 0, 1, 2 ... (Overview offers Renumber tabs otherwise)."""
+        out = {}
+        with self._lock:
+            u = self.settings.units if isinstance(self.settings.units, dict) else {}
+            for key, m in u.items():
+                if not isinstance(m, dict) or not m:
+                    continue
+                mine = [i for i in self.instances.values() if i.driver.key == key]
+                here = {unit_of(i.ident, i.port): getattr(i, "number", None) for i in mine}
+                absent = [unit for unit in m if unit not in here]
+                tidy = not absent and sorted(here.values()) == list(range(len(here)))
+                out[key] = {"present": len(here), "absent": len(absent), "tidy": tidy,
+                            "in_use": self.in_use([i.slug for i in mine])}
+        return out
+
+    def renumber_units(self, key):
+        """Overview's Renumber tabs for one driver: forgets the remembered units that aren't plugged in now, and
+        numbers the present ones 0, 1, 2 ... in their current order (no "ZWO EFW #4" left over from units long
+        gone). Present units whose number changes start again under their new tab, keeping their place in the
+        saved tab order; their Alpaca numbers and settings (kept by UniqueID and serial) don't change. Refused
+        while an Alpaca client is connected to one of the driver's devices: the restart would cut it off.
+        -> (ok, message)"""
+        with self._lock:
+            mine = sorted((i for i in self.instances.values() if i.driver.key == key),
+                          key=lambda i: (getattr(i, "number", 0) or 0, i.slug))
+            if self.in_use([i.slug for i in mine]):
+                return False, "An Alpaca program is connected to one of these devices: disconnect it first"
+            m = self._units(key)
+            present = {unit_of(i.ident, i.port) for i in mine}
+            gone = [u for u in m if u not in present]
+            renamed = {}                       # old slug -> new slug
+            restart = []
+            for n, inst in enumerate(mine):
+                old = getattr(inst, "number", None)
+                m[unit_of(inst.ident, inst.port)] = n
+                if old != n:
+                    base = _slug_base(inst.slug, old)
+                    if base is not None:
+                        renamed[inst.slug] = base if n == 0 else f"{base}-{n + 1}"
+                    restart.append(inst.slug)
+            base = next((b for b in (_slug_base(i.slug, getattr(i, "number", None)) for i in mine) if b), None)
+            gone_slugs = set()
+            for u in gone:
+                n = m.pop(u)
+                if base is not None:
+                    gone_slugs.add(base if n == 0 else f"{base}-{n + 1}")
+            if renamed or gone_slugs:
+                new = set(renamed.values())
+                self.settings.tab_order = [renamed.get(s, s) for s in self._saved_tab_order()
+                                           if s in renamed or (s not in gone_slugs and s not in new)]
+            self._save()
+        for slug in restart:
+            log.info("%s: renumbered, starting again as %s", slug, renamed.get(slug, "?"))
+            self._remove(slug)
+        if restart:
+            self._wake.set()
+        log.info("%s: tabs renumbered (%d forgotten, %d restarted)", key, len(gone), len(restart))
+        parts = []
+        if gone:
+            parts.append(f"forgot {len(gone)} unit{'' if len(gone) == 1 else 's'} not plugged in")
+        if restart:
+            parts.append(f"{len(restart)} device{'' if len(restart) == 1 else 's'} starting again under a new tab")
+        msg = "; ".join(parts) or "already in order"
+        return True, msg[0].upper() + msg[1:]
+
     def own_addresses(self):
         t, a = self._own
         if time.monotonic() - t > 30:
@@ -562,7 +716,10 @@ class Hub:
         """The units a "usb" driver lists (Driver.find), or None if it couldn't say."""
         if hasattr(driver, "find_remote"):        # in its own process
             return driver.find_remote(present)
-        sims = [u.sim for u in present if u.sim is not None] if self.simulated else None
+        # simulated: only this driver's own simulators (by name), and a list even when empty (never the real SDK)
+        mine = getattr(driver, "simulators", {}) or {}
+        sims = ([u.sim for u in present if u.sim is not None and (not u.sim_name or u.sim_name in mine)]
+                if self.simulated else None)
         try:
             units = driver.find(self._ctx[driver.key], sims)
         except Exception:
@@ -669,7 +826,7 @@ class Hub:
             try:
                 with self._lock:
                     ctx = self._ctx[driver.key]
-                    ctx._number = self.free_number(driver.key)
+                    ctx._number = self.tab_number(driver.key, unit_of(ident, port))
                     try:
                         inst = driver.start(ctx, port, ident)
                     finally:
@@ -855,6 +1012,55 @@ class Hub:
         self._table = (time.monotonic(), rows)
         return rows
 
+    def _alpaca_plan(self):
+        """(rows of the devices here, {uid: [type, new number]}, [changes as text], absent count) for Renumber
+        Alpaca numbers: per device type the present devices numbered 0, 1, 2 ... in their current order, the
+        numbers kept for devices that aren't here dropped."""
+        rows = self.device_table()
+        nums = self.settings.numbers
+        present = {r["uid"] for r in rows}
+        absent = sum(1 for uid in nums if uid not in present)
+        new, changes = {}, []
+        by_type = {}
+        for r in rows:
+            by_type.setdefault(r["type"], []).append(r)
+        for typ, rs in sorted(by_type.items()):
+            for n, r in enumerate(sorted(rs, key=lambda r: r["number"])):
+                new[r["uid"]] = [typ, n]
+                if r["number"] != n:
+                    changes.append(f"{r['name']}: {typ} #{r['number']} → #{n}")
+        return rows, new, changes, absent
+
+    def alpaca_numbers_json(self):
+        """hub.json's "alpaca_numbers": whether the Alpaca numbers are already 0, 1, 2 ... per type with none kept
+        for absent devices (Overview offers Renumber Alpaca numbers otherwise), and what renumbering would change."""
+        rows, new, changes, absent = self._alpaca_plan()
+        return {"tidy": not changes and not absent, "absent": absent, "changes": changes,
+                "in_use": self.in_use(list(self.instances))}
+
+    def renumber_alpaca(self):
+        """Overview's Renumber Alpaca numbers: the devices here numbered 0, 1, 2 ... per type in their current
+        order, and the numbers kept for devices that aren't here forgotten (one that comes back gets the next free
+        number). Imaging programs that chose a device by its number must choose again, so the page asks first, and
+        it is refused while any Alpaca client is connected. UniqueIDs don't change. -> (ok, message)"""
+        if self.in_use(list(self.instances)):
+            return False, "An Alpaca program is connected to a device here: disconnect it first"
+        with self._lock:
+            rows, new, changes, absent = self._alpaca_plan()
+            self.settings.numbers = new
+            self._table = (0.0, [])
+            self._save()
+        for c in changes:
+            log.info("Alpaca renumbered: %s", c)
+        log.info("Alpaca numbers renumbered (%d changed, %d forgotten)", len(changes), absent)
+        parts = []
+        if changes:
+            parts.append(f"{len(changes)} device{'' if len(changes) == 1 else 's'} renumbered ({'; '.join(changes)})")
+        if absent:
+            parts.append(f"forgot the numbers of {absent} device{'' if absent == 1 else 's'} not here")
+        msg = "; ".join(parts) or "already in order"
+        return True, msg[0].upper() + msg[1:]
+
     def lookup(self, typ, number):
         for r in self.device_table():
             if r["type"] == typ and r["number"] == number:
@@ -1013,7 +1219,9 @@ class Hub:
         insts = self.ordered_instances()
         return {"name": NAME, "version": VERSION, "simulated": self.simulated, "urls": self.public_urls(),
                 "uptime": int(time.time() - self.started),
-                "devices": [{"slug": i.slug, "title": i.title, "kind": i.driver.key, "port": i.port.device, "up": i.up(),
+                "devices": [{"slug": i.slug, "title": self.display_title(i), "usual_title": i.title,
+                             "named": bool(self._names(i.driver.key).get(unit_of(i.ident, i.port))),
+                             "kind": i.driver.key, "port": i.port.device, "up": i.up(),
                              "unit": history_unit(i),     # its day files: /hub/history/<kind>/<unit>/…
                              "summary": i.summary(), "missing": i.slug in self._missing} for i in insts],
                 "stuck": sorted(self._stuck), "scanning": self.scanning, "scan_started": self.scan_started,
@@ -1023,6 +1231,8 @@ class Hub:
                 "last_scan": self.last_scan,
                 "scan_every": self.scan_s,
                 "tab_order_saved": bool(self._saved_tab_order()),   # Overview's Reset order
+                "units": self.units_json(),                        # Overview's Renumber tabs
+                "alpaca_numbers": self.alpaca_numbers_json(),      # Overview's Renumber Alpaca numbers
                 "alpaca": [{k: r[k] for k in ("type", "number", "name", "slug")} for r in self.device_table()],
                 "updates": self.updates_json()}
 
@@ -1100,12 +1310,17 @@ class Hub:
 
     def saved_history(self):
         """/hub/history.json: {"days": how long every device's files are kept, "folder", "units": [{"driver", "unit",
-        "folder", "files": [{"name", "bytes", "modified"}]}]}, folders with files only."""
+        "folder", "title" (the device's name, or None), "files": [{"name", "bytes", "modified"}]}]}, folders with files
+        only."""
         out = []
+        with self._lock:
+            running = {(i.driver.key, history_unit(i)): self.display_title(i) for i in self.instances.values()}
         for key, unit, folder in self._history_dirs():
             files = self._csv_files(folder)
             if files:
+                # the device's name: from the device while it runs, else as its folder keeps it (device.json)
                 out.append({"driver": key, "unit": unit, "folder": folder,
+                            "title": running.get((key, unit)) or read_title(folder),
                             "files": [{"name": n, "bytes": b, "modified": m} for n, b, m in files]})
         return {"days": clamp_days(self.settings.history_days), "folder": os.path.join(self.config_dir, "drivers"),
                 "units": out}
@@ -1340,6 +1555,28 @@ class _Handler(BaseHTTPRequestHandler):
                 n = int(self.headers.get("Content-Length") or 0)
                 form = dict(urllib.parse.parse_qsl(self.rfile.read(n).decode("utf-8", "replace") if n else ""))
                 return self._reply(200, json.dumps({"days": hub.set_history_days(form.get("days"))}))
+            if path == "/hub/devices/name" and self.command == "POST":
+                # Overview's Rename, "slug=<tab>&name=<name or empty>"
+                if self.headers.get("X-Hub-Page") != "1":
+                    return self._reply(403, "Page requests only", "text/plain")
+                n = int(self.headers.get("Content-Length") or 0)
+                form = dict(urllib.parse.parse_qsl(self.rfile.read(n).decode("utf-8", "replace") if n else ""))
+                ok, msg = hub.set_device_name(form.get("slug", ""), form.get("name", ""))
+                return self._reply(200 if ok else 404, json.dumps({"ok": ok, "message": msg}))
+            if path == "/hub/alpaca/renumber" and self.command == "POST":
+                # Overview's Renumber Alpaca numbers
+                if self.headers.get("X-Hub-Page") != "1":
+                    return self._reply(403, "Page requests only", "text/plain")
+                ok, msg = hub.renumber_alpaca()
+                return self._reply(200 if ok else 409, json.dumps({"ok": ok, "message": msg}))
+            if path == "/hub/units/renumber" and self.command == "POST":
+                # Overview's Renumber tabs, "key=<driver key>"
+                if self.headers.get("X-Hub-Page") != "1":
+                    return self._reply(403, "Page requests only", "text/plain")
+                n = int(self.headers.get("Content-Length") or 0)
+                form = dict(urllib.parse.parse_qsl(self.rfile.read(n).decode("utf-8", "replace") if n else ""))
+                ok, msg = hub.renumber_units(form.get("key", ""))
+                return self._reply(200 if ok else 409, json.dumps({"ok": ok, "message": msg}))
             if path == "/hub/tab-order" and self.command == "POST":
                 # the device tabs' dragged order, "order=slug,slug,…"; "reset=1" goes back to the default
                 if self.headers.get("X-Hub-Page") != "1":

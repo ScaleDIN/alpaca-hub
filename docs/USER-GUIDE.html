@@ -19,11 +19,13 @@ of them at one address. Each device has a tab with its status and controls, also
 
 <h2>What gets installed</h2>
 <ul>
-<li><b>The hub</b> (<code>AlpacaHub-&lt;version&gt;-Setup.exe</code>): finds devices on the serial ports, serves them over
-Alpaca, and shows the status page. It has no device drivers of its own.</li>
+<li><b>The hub</b> (<code>AlpacaHub-&lt;version&gt;-Setup.exe</code>): finds devices on the serial ports and USB, serves
+them over Alpaca, and shows the status page. It has no device drivers of its own.</li>
 <li><b>A driver for each kind of device</b> (<code>AlpacaHub-&lt;driver&gt;-&lt;version&gt;-Setup.exe</code>), for example
 <code>wcover</code> (WandererCover V4-EC flat panel), <code>wbox</code> (WandererBox Plus V3), <code>nitecrawler</code>
-(Moonlite NiteCrawler). Install the hub first, then the drivers you need, in any order, while the hub runs or not.</li>
+(Moonlite NiteCrawler), <code>optec</code> (Optec Gemini / Hercules, FocusLynx / ThirdLynx), <code>zwoeaf</code> (ZWO EAF
+focuser) and <code>zwoefw</code> (ZWO EFW filter wheel). Install the hub first, then the drivers you need, in any order,
+while the hub runs or not.</li>
 </ul>
 <p>Drivers go to <code>%ProgramData%\AlpacaHub\drivers</code>. Each driver runs in its own process: if one fails, the hub
 starts it again and the other devices carry on.</p>
@@ -70,15 +72,42 @@ other computers; if they still can't reach it once the network is Private, Start
 
 <h2>The Overview tab</h2>
 <ul>
-<li><b>Devices</b>: each device found, with its port, a short status and its Alpaca numbers. Click one to open its tab.</li>
+<li><b>Devices</b>: each device found, with its port, a short status and its Alpaca numbers. Click one to open its tab.
+<b>Rename</b> gives a device a name of your own, shown on its tab, its card and in Saved history (leave it empty for
+the usual name). Without one, a name stored in the device itself is shown, such as the custom ID set with ZWO's
+software.</li>
+<li><b>The tabs</b> keep the same order whatever COM port each device is on. Drag a tab to move it, or press
+<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>←</kbd>/<kbd>→</kbd> on it; the hub keeps that order for every browser, and an
+unplugged device's tab comes back in its place. <b>Reset order</b> under the devices puts them back in the usual
+order.</li>
+<li><b>Two or more of a kind</b> (two filter wheels, say): each keeps its tab name ("ZWO EFW #2") and its Alpaca
+number for good, also while it's unplugged, so a new one gets the next number. When one is gone for good:
+<b>Renumber tabs</b> on its driver's card numbers the tabs 1, 2, 3 again, and <b>Renumber Alpaca numbers</b> under the
+devices numbers the Alpaca numbers 0, 1, 2 per kind. The second shows what changes and asks first: an imaging program
+that chose a device by its number (Focuser #1) must choose it again. Neither works while an imaging program is
+connected to the devices concerned.</li>
 <li><b>Scan now</b>: looks at the serial ports at once (the hub does it every 15 s anyway).</li>
 <li><b>Drivers</b>: every driver with its version and state (running, restarting, failed, off, refused).
 <b>Turn off</b> stops a driver and frees its ports until you turn it on again. A driver that failed several times
 shows its last log lines and <b>Try again</b>. A newer version that waits for programs to disconnect shows
 <b>Switch now</b>.</li>
+<li><b>The chart of everything</b> and <b>Saved history</b>: every device's readings on one time axis, and each
+device's 1-minute averages saved to a file per day (kept 1 to 365 days, one setting for all), listed by device name
+with Download and Open folder.</li>
 <li><b>Serial ports</b> (fold it open): every COM port and what the hub made of it. <b>Ignore</b> keeps the hub away from a port for good, for example a meter's USB cable or a device another program uses: never opened, never probed, also after a restart. A port whose USB chip has a serial number stays ignored on any COM number. <b>Stop ignoring</b> undoes it.</li>
 <li><b>Updates</b>: a line at the top when there is a new version, and the setting at the bottom (see
 <a href="#updates">Updates</a>).</li>
+</ul>
+
+<h2>ZWO focusers and filter wheels</h2>
+<ul>
+<li>The <b>EAF</b> and <b>EFW</b> are reached through ZWO's own software library (included with their drivers), on USB.
+Settings stored in them (maximum step, reverse, backlash, one-way rotation, their custom ID) are set with ZWO's own
+drivers or tools; the hub only reads them.</li>
+<li>A filter wheel's <b>filter names and focus offsets</b> are set on its tab and kept in the hub for that wheel, so
+every imaging program sees the same ones.</li>
+<li><b>Don't use ZWO's own ASCOM driver at the same time</b>: it can open a focuser or wheel the hub already holds, and
+then two programs move it. The hub's tab says "moved by another program" when that happens.</li>
 </ul>
 
 <h2 id="programs">Alpaca programs</h2>
@@ -133,6 +162,9 @@ installing: Start menu → <b>Allow network access (firewall)</b>. It asks for a
 that block the hub and allows it on private networks again (never on public ones).</li>
 <li><b>A driver keeps restarting or failed</b>: Overview shows why and its last log lines; the full log is
 <code>logs\&lt;driver&gt;.log</code> in the settings folder.</li>
+<li><b>A ZWO focuser or filter wheel answers slowly</b> (moves start late, Halt takes a second or more): is it on the
+same USB hub as a USB serial adapter that is in use (an FTDI chip, such as the Optec Gemini's)? Move it to another
+USB port or hub.</li>
 <li><b>Two boxes or panels</b>: these have no serial number, so the hub tells them apart by their USB socket. Keep each
 on its own socket.</li>
 </ul>

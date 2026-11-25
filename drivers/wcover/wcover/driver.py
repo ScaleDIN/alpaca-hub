@@ -114,7 +114,7 @@ class CoverApp(App):
 
     def __init__(self, inst):
         self.inst = inst
-        self.history = History(["position", "brightness", "heater", "voltage"])
+        self.history = History(["position", "brightness", "heater", "voltage"], held=("brightness", "heater"))   # set levels: held. The angle is a sensor reading that wanders ±1°: averaged
 
     def status(self):
         i = self.inst

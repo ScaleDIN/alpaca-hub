@@ -10,7 +10,8 @@ without the device.
 
 Columns: time_local (the minute, local time), unix_s (its start), then for each of the device's history keys its
 average over the minute, <key>_min and <key>_max (the lowest and highest 1 s sample; a driver from before min/max:
-the lowest and highest of its averages). Missing readings stay empty, never zero. Files older than the hub's history_days setting are deleted (the hub's
+the lowest and highest of its averages). A held key (history.json's "held": a position, a set level) gets its last
+reading in the minute instead of the average, a value the device really had. Missing readings stay empty, never zero. Files older than the hub's history_days setting are deleted (the hub's
 own files only: a driver's files follow that driver's setting).
 
 Drivers that write their own files (the power box) are left out: OWN_FILES, or a history.json reply with
@@ -38,6 +39,30 @@ OWN_DAYS = {"wbox": ("/setup/history", "X-WBStock")}
 DAYS_MIN, DAYS_MAX, DAYS_DEFAULT = 1, 365, 7
 EVERY_S = 60
 SUFFIX = "-history"
+DEVICE_FILE = "device.json"   # in each <unit>-history folder: {"title"}, the device's name for Overview's Saved history
+
+
+def write_title(folder, title):
+    """Leaves the device's name (its tab title, "ZWO EFW #2") in its history folder. False if it couldn't."""
+    try:
+        os.makedirs(folder, exist_ok=True)
+        tmp = os.path.join(folder, DEVICE_FILE + ".tmp")
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump({"title": str(title)}, f, ensure_ascii=False)
+        os.replace(tmp, os.path.join(folder, DEVICE_FILE))
+        return True
+    except OSError:
+        return False
+
+
+def read_title(folder):
+    """The name write_title left, or None."""
+    try:
+        with open(os.path.join(folder, DEVICE_FILE), encoding="utf-8") as f:
+            t = json.load(f).get("title")
+        return t if isinstance(t, str) and t.strip() else None
+    except (OSError, ValueError, AttributeError):
+        return None
 
 
 def clamp_days(n):
@@ -75,6 +100,8 @@ class Recorder:
         self._lock = threading.Lock()            # one record pass at a time (the minute's, a device leaving)
         self._last = {}                          # folder -> start (unix_s) of the newest minute written
         self._failed = set()                     # folders whose last write failed (logged once)
+        self._titles = {}                        # folder -> the device name last left in its device.json
+        self.title_of = None                     # inst -> the name shown for it (the hub's display_title)
         self._purged_for = None
 
     # ---------------------------------------------------------------- recording
@@ -118,13 +145,16 @@ class Recorder:
                 return 0
             rows = sorted((r for r in rows if isinstance(r, list) and r and isinstance(r[0], (int, float))
                            and r[0] > since), key=lambda r: r[0])
-            base, minutes = minute_rows(keys, rows)
+            base, minutes = minute_rows(keys, rows, h.get("held") or ())
             if minutes and not final:
                 minutes = [m for m in minutes if m[0] < rows[-1][0] - rows[-1][0] % 60]   # the open minute waits
             if not minutes:
                 return 0
             if self._write(inst.driver.key, folder, base, minutes):
                 self._last[folder] = minutes[-1][0]
+                title = self.title_of(inst) if self.title_of else getattr(inst, "title", None)
+                if title and self._titles.get(folder) != title and write_title(folder, title):
+                    self._titles[folder] = title
                 return len(minutes)
             return 0
 
@@ -304,10 +334,11 @@ class Recorder:
                 log.exception("history recording")
 
 
-def minute_rows(keys, rows):
+def minute_rows(keys, rows, held=()):
     """history.json's keys and rows (any step: 10 s, or 1 minute from an older driver) -> (the base keys, one row per
     minute: [start, avg, min, max of each base key]). The average is over the steps that have the value; the lowest
-    and highest come from <key>_min / <key>_max when the driver gives them, else from the steps' averages."""
+    and highest come from <key>_min / <key>_max when the driver gives them, else from the steps' averages. A held
+    key's value is the minute's last step's (that step's last reading) instead of the average."""
     col = {k: i + 1 for i, k in enumerate(keys)}
     base = [k for k in keys if not ((k.endswith("_min") or k.endswith("_max")) and k[:-4] in col)]
     groups = {}
@@ -326,7 +357,8 @@ def minute_rows(keys, rows):
             avgs = [v for v in (at(r, k) for r in groups[m]) if v is not None]
             los = [v for v in ((at(r, k + "_min") if (k + "_min") in col else at(r, k)) for r in groups[m]) if v is not None]
             his = [v for v in ((at(r, k + "_max") if (k + "_max") in col else at(r, k)) for r in groups[m]) if v is not None]
-            rec += [round(sum(avgs) / len(avgs), 2) if avgs else None, min(los) if los else None,
+            val = (avgs[-1] if k in held else round(sum(avgs) / len(avgs), 2)) if avgs else None
+            rec += [val, min(los) if los else None,
                     max(his) if his else None]
         out.append(rec)
     return base, out

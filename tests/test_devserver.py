@@ -138,6 +138,35 @@ class HistoryTests(unittest.TestCase):
         s = h.get("s")
         self.assertEqual((s["keys"], s["step"], len(s["rows"])), (["v", "w"], 1, 12))
 
+    def test_held_keys_last_reading_and_exact_changes(self):
+        from hub.devserver import History
+        h = History(["pos", "temp"], held=("pos", "nope"))
+        t0 = 1795800000
+        for i in range(10):                               # 5600, a move to 5800 and back inside one step
+            h.add(t0 + i, {"pos": 5800 if 3 <= i < 5 else 5600, "temp": 20.0 + i})
+        for i in range(10, 21):
+            h.add(t0 + i, {"pos": 5700 if i < 15 else None, "temp": 21.0})
+        d = h.get("m")
+        self.assertEqual(d["held"], ["pos"])
+        self.assertEqual(d["rows"][0][:3], [t0, 5600, 24.5])           # the last reading, never 5640
+        self.assertEqual(d["rows"][0][3], 5600)                        # pos_min
+        self.assertEqual(d["rows"][0][5], 5800)                        # pos_max: the move still shows
+        self.assertEqual(d["rows"][1][1], 5700)                        # the last reading the step had
+        c = h.get("c")
+        self.assertEqual(c["keys"], ["pos"])
+        self.assertEqual(c["rows"], [[t0, "pos", 5600], [t0 + 3, "pos", 5800], [t0 + 5, "pos", 5600],
+                                     [t0 + 10, "pos", 5700], [t0 + 15, "pos", None]])
+        self.assertEqual(h.get("c", since=t0 + 5)["rows"], c["rows"][3:])
+        self.assertEqual(History(["v"]).get("m")["held"], [])
+
+    def test_changes_kept_for_a_day(self):
+        from hub.devserver import History, KEEP_S
+        h = History(["pos"], held=("pos",))
+        h.add(1000, {"pos": 1})
+        h.add(1001, {"pos": 2})
+        h.add(1001 + KEEP_S, {"pos": 3})
+        self.assertEqual(h.get("c")["rows"], [[1001, "pos", 2], [1001 + KEEP_S, "pos", 3]])
+
 
 if __name__ == "__main__":
     unittest.main()

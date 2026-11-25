@@ -1,0 +1,6 @@
+/* ZWO EFW: the kit's styles cover nearly everything. */
+#slots{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 8px}
+#slots button{min-width:5.5em;padding:6px 10px;background:var(--card);color:var(--fg);border:1px solid var(--line)}
+#slots button:hover:not(:disabled){border-color:var(--acc)}
+#slots button.cur{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600}
+#ff td{padding:3px 6px 3px 0}#ff input[name^=name]{width:12em}#ff input[name^=offset]{width:6em}

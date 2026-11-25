@@ -642,7 +642,8 @@ then only add the frame work.
 - **Read, never sent** (they are stored in the device and set with ZWO's own app or hand controller, as with the
   Optec configuration commands): the EAF's max step, reverse, backlash, beep, setting the current position
   (`EAFResetPostion`), `EAFSetID`; the EFW's one-way rotation (`EFWSetDirection`), `EFWCalibrate`, `EFWSetID`.
-  Firmware updates stay with ZWO's tools.
+  Firmware updates stay with ZWO's tools. Each page says so, the custom ID (alias) included, and the cameras' pages
+  will too (`ASISetID`): "set with ZWO's own drivers or tools: the hub only reads them".
 
 ### EAF: Alpaca `Focuser` → ZWO EAF SDK
 | Alpaca | EAF SDK | Notes |
@@ -681,6 +682,13 @@ well; on another hub, or with that port closed, 5-8 ms. Worth a line in the EAF'
 | `Position` (set) | `EFWSetPosition` | Refused outside the slot count. |
 | `Names` | the driver's setting | "Filter 1" … by default; the count from `EFWGetProperty` (`slotNum`). |
 | `FocusOffsets` | the driver's setting | 0 for each slot by default. |
+| `DeviceState` | `EFWGetPosition` | Position (−1 while turning) and a TimeStamp. |
+
+**Seen on a real EFW (2026-11-24, the user's, read only):** USB VID 03C3 PID 1F01; SDK 1.8.6; 7 slots; firmware
+3.0.9; a serial number; one-way rotation off; hardware error code 0. `EFWGetProperty` gave the slot count before
+`EFWOpen` too (the header says 0 then). Its name is "EFW" followed by the alias stored in the wheel, which can be a
+person's name: keep it out of public files. On the shared USB hub with the Gemini's FTDI adapter each call took
+0.4-0.7 s (the first `EFWGetProperty` 2.3 s), as the EAF did there.
 
 ### The EAF 5V
 The EAF 5V (powered from USB instead of 12 V) is served by `zwoeaf` exactly as the standard EAF: the same SDK, the
@@ -732,7 +740,12 @@ same mapping, the same rules. It needs no code of its own, only:
    `driver.py`, page, tests, contract tests. **Done 2026-11-24 (0.1.0, simulator only):** SDK 1.8.5's x64 DLL and
    ZWO's licence in `zwoeaf/sdk/`; stall (E5) and "not finishing" as under Safety; `hub-sim-zwo` in launch.json.
    The simulator's speed, max step and USB PID (1F10) are guesses until step 1.
-4. **`zwoefw`:** the same, with the names and offsets on the page.
+4. **`zwoefw`:** the same, with the names and offsets on the page. **Done 2026-11-24 (0.1.0, simulator; the real
+   wheel read only):** SDK 1.8.6's x64 DLL and ZWO's licence in `zwoefw/sdk/`; names and offsets per wheel in
+   `drivers/zwoefw/<serial>.json` (the hub's settings), edited on the page (allowed while a client is connected:
+   they move nothing); a turn by another program and one that doesn't finish are shown (the SDK can't stop a turn).
+   Simulators `efw` (7 slots), `efw5`, `efw8`. With it the hub's simulated USB path gives each driver only its own
+   simulators (before, `eaf,efw` together found nothing).
 5. **On the units:** read-only, then short EAF moves with the hand controller in reach, a mid-move kill, every EFW
    slot. Then ConformU's Focuser and FilterWheel tests (they move both: with the user's OK).
 

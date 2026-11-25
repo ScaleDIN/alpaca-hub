@@ -49,6 +49,16 @@ Every installed driver, with its version and state: running, starting, restartin
 - **Turn off** stops a driver and frees its ports until you turn it on again (also after a restart).
 - A driver that failed several times shows why, its last log lines and **Try again**.
 - A newer version waiting for your imaging program to disconnect shows **Switch now**.
+- With two or more units of a kind, each keeps its tab name ("ZWO EFW #2") for good, also while it's unplugged.
+  When one is gone for good, its driver shows **Renumber tabs**: it forgets the units that aren't plugged in and
+  numbers the others 1, 2, 3 again, so a new unit doesn't end up as "#4". Not while an imaging program is
+  connected to them; their Alpaca numbers and settings stay as they are.
+- **Rename** on a device's card gives it a name of your own (its tab, its card and Saved history show it; empty
+  brings back the usual one). Without one, a name stored in the device itself is shown, such as the custom ID set
+  with ZWO's software.
+- The Alpaca numbers are kept the same way. When some are kept for devices that are gone, **Renumber Alpaca
+  numbers** under the devices numbers the ones here 0, 1, 2 per kind. It shows what changes and asks first: an
+  imaging program that chose a device by its number must choose it again.
 - A driver written for a newer hub is *refused*, with the reason: update the hub first.
 
 ## Serial ports

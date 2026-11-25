@@ -1,4 +1,4 @@
-/* device-web-ui kit v10 (chart API v4): the chart (K.chart). One engine for every device, generalised from the PocketCW chart
+/* device-web-ui kit v16 (chart API v4): the chart (K.chart). One engine for every device, generalised from the PocketCW chart
    (one y-axis per unit, panels, ranges, clock time) and the EBC-A20 chart (trace chips, elapsed time).
 
    Data: an array of records {t, <key>: number|null, ...} sorted by t (unix seconds, or seconds since start
@@ -78,6 +78,15 @@
        "n of m" on, None while any is on) over chips with the short names (the "Group · " prefix dropped; the legend
        and readout keep the full label). A group with nothing on starts folded. Clear all leaves one series on, as
        the chart always shows at least one. Without groups the chips stand alone.
+     (kit v16, optional; leaving it out keeps the v15 behaviour):
+       hold: [keys]           series that sit at a value and jump (a focuser position, a filter slot, a set level): a
+                              record's value holds until the next record that gives one, drawn as steps (flat, then
+                              a vertical jump), never as a ramp, and without a band (the steps are exact). With hold,
+                              any record may leave a key out (undefined, not null): a held series carries its value
+                              through it, any other series skips it without a break, and the readout takes that
+                              series from the nearest record that has it. null still means no reading (a break).
+                              K.histJoin(coarse, fine, changes) builds such records from history.json res=m, res=s
+                              and res=c (the hub's History with held keys).
      (kit v15) the picker is shown under the chart in every view, not only Custom, so changing views never changes
        the page's height: it lights the current view's values and stands in for the legend (#lg then shows only
        shadeLegend). Clicking a chip, None or Clear all in another view switches to Custom, starting from that
@@ -86,6 +95,29 @@
      Returns {set, merge, records, draw, endIdx, view, panel, keys} and (v3) zoom(), zoom([t0, t1] | null),
      pngCanvas(lines), png(lines, name): build or save the PNG with these caption lines (the device can fetch
      what it needs for the caption first). */
+  /* v16: chart records from a hub History's replies (already turned into records {t, key: value}): the 10 s steps
+     (res=m) before the 1 s samples (res=s), with each held key's exact changes (res=c, rows [t, key, value]) in place
+     of the steps' values from its first change on (step: the steps' length, default 10 s). Give the chart
+     hold: [the held keys]. */
+  K.histJoin = function (coarse, fine, changes, step) {
+    const start = fine.length ? fine[0].t : Infinity, first = {}, at = new Map();
+    (changes || []).forEach(([t, k, v]) => {
+      if (!(k in first)) first[k] = t;
+      if (t >= start) return;
+      if (!at.has(t)) at.set(t, { t });
+      at.get(t)[k] = v;
+    });
+    const held = Object.keys(first);
+    const out = coarse.filter((r) => r.t < start).map((r) => {
+      const c = Object.assign({}, r);
+      // a step that ends after the key's first change: its value comes from the log
+      held.forEach((k) => { if (r.t + (step || 10) > first[k]) { delete c[k]; delete c[k + '_min']; delete c[k + '_max']; } });
+      if (at.has(r.t)) { Object.assign(c, at.get(r.t)); at.delete(r.t); }   // a change at a step's start: one record
+      return c;
+    });
+    return out.concat([...at.values()]).sort((x, y) => x.t - y.t).concat(fine);
+  };
+
   K.chart = function (o) {
     const E = (id) => $((o.ids || '') + id);  // v9: element ids with a prefix, so a page can hold several charts
     const SER = o.series, LANE = o.lanes || {}, PANELS = o.panels, RANGES = o.ranges;
@@ -95,6 +127,13 @@
     const ST = o.persist === false ? { get: (k, d) => d, set() {} } : K.store;
     const BLO = o.bands ? (o.bands.lo || '_min') : null, BHI = o.bands ? (o.bands.hi || '_max') : null;   // v12
     const BMAX = o.bands && o.bands.max != null ? o.bands.max : 2;      // v13: auto draws bands up to this many series
+    const HOLD = new Set(o.hold || []), SPARSE = HOLD.size > 0;         // v16: held series; records may leave keys out
+    const skip = (r, s) => SPARSE && r[s] === undefined;
+    // v16: each held series' value carried into the records that leave it out (null too: no reading until the next)
+    function prep() {
+      if (!SPARSE) return;
+      HOLD.forEach((s) => { let v; R.forEach((r) => { if (r[s] === undefined) { if (v !== undefined) r[s] = v; } else v = r[s]; }); });
+    }
     let bandMode = BLO ? ST.get(sk('bands'), 'auto') : 'auto';
     if (!['auto', 'on', 'off'].includes(bandMode)) bandMode = 'auto';
     let R = [], zoom = null, hov = null, pin = null, drag = null, lastTap = null, G = null;
@@ -265,7 +304,7 @@
         let mn = Infinity, mx = -Infinity;
         ax.tf = ax.log ? (v) => (v > 0 ? Math.log10(v) : null) : (v) => v;
         const rng = (v) => { const y = v == null ? null : ax.tf(v); if (y != null) { if (y < mn) mn = y; if (y > mx) mx = y; } };
-        for (let k = a; k <= b; k++) ax.S.forEach((s) => { rng(R[k][s]); if (BON) { rng(R[k][s + BLO]); rng(R[k][s + BHI]); } });
+        for (let k = a; k <= b; k++) ax.S.forEach((s) => { rng(R[k][s]); if (BON && !HOLD.has(s)) { rng(R[k][s + BLO]); rng(R[k][s + BHI]); } });
         let st;
         if (ax.log) {
           if (mn > mx) { mn = -4; mx = 0; }
@@ -345,6 +384,7 @@
       if (BON) {  // v12: min-max bands under the lines, one filled run per stretch without a gap (v13: when shown)
         g.globalAlpha = 0.2;
         AX.slice().reverse().forEach((ax) => ax.S.slice().reverse().forEach((s) => {
+          if (HOLD.has(s)) return;   // v16: a held series' steps are exact
           g.fillStyle = css(SER[s][1]);
           let run = [], pt = -Infinity;
           const flush = () => {
@@ -356,6 +396,7 @@
             run = [];
           };
           for (let k = a; k <= b; k++) {
+            if (skip(R[k], s)) continue;
             const lo = R[k][s + BLO] == null ? null : ax.tf(R[k][s + BLO]), hi = R[k][s + BHI] == null ? null : ax.tf(R[k][s + BHI]);
             if (lo == null || hi == null || R[k].t - pt > gapS) flush();
             pt = R[k].t;
@@ -367,14 +408,17 @@
       }
       AX.slice().reverse().forEach((ax) => ax.S.slice().reverse().forEach((s) => {
         g.strokeStyle = css(SER[s][1]); g.beginPath();
-        let pen = false, pt = -Infinity;
+        let pen = false, pt = -Infinity, py = 0;
+        const step = HOLD.has(s);
         for (let k = a; k <= b; k++) {
+          if (skip(R[k], s)) continue;
           const v = R[k][s] == null ? null : ax.tf(R[k][s]);
           if (v == null || R[k].t - pt > gapS) pen = false;
           pt = R[k].t;
           if (v == null) continue;
           const x = X(R[k].t), y = ax.Y(v);
-          pen ? g.lineTo(x, y) : g.moveTo(x, y); pen = true;
+          if (pen && step) g.lineTo(x, py);   // v16: held: flat to here, then the jump
+          pen ? g.lineTo(x, y) : g.moveTo(x, y); pen = true; py = y;
         }
         g.stroke();
       }));
@@ -417,16 +461,27 @@
       g.strokeStyle = css('--fg'); g.globalAlpha = 0.45; g.setLineDash([4, 3]);
       g.beginPath(); g.moveTo(Math.round(x) + 0.5, G.T); g.lineTo(Math.round(x) + 0.5, G.T + G.ph); g.stroke();
       g.setLineDash([]); g.globalAlpha = 1;
+      // v16: a series this record leaves out is read from the nearest record that has it (within the gap limit)
+      const near = (s) => {
+        if (!skip(r, s)) return r;
+        for (let d = 1; d < 400; d++) {
+          const i = k - d, j = k + d, ri = i >= G.a ? R[i] : null, rj = j <= G.b ? R[j] : null;
+          if (!ri && !rj) break;
+          const best = [ri, rj].filter((q) => q && !skip(q, s) && Math.abs(q.t - r.t) <= gapS).sort((p, q) => Math.abs(p.t - r.t) - Math.abs(q.t - r.t))[0];
+          if (best) return best;
+        }
+        return {};
+      };
       G.LN.forEach((ln) => ln.S.forEach((s) => {
-        const tv = r[s] == null ? null : ln.tf(r[s]); if (tv == null) return;
+        const rs = near(s), tv = rs[s] == null ? null : ln.tf(rs[s]); if (tv == null) return;
         const y = ln.Y(tv); g.fillStyle = css(SER[s][1]); g.beginPath(); g.arc(x, y, 3.5, 0, 7); g.fill();
         g.strokeStyle = css('--card'); g.lineWidth = 1.5; g.stroke();
       }));
       const ks = keys(), lane = (s) => LANE[SER[s][2]] || {};
       const val = (s) => {
-        const l = lane(s), d = l.dec == null ? 2 : l.dec;
+        const l = lane(s), d = l.dec == null ? 2 : l.dec, r = near(s);
         const v = l.fmt ? (r[s] == null ? '—' : l.fmt(r[s]) + ' ' + (l.u || '')) : f(r[s], d, l.u ? ' ' + l.u : '');
-        const lo = BLO ? r[s + BLO] : null, hi = BLO ? r[s + BHI] : null;   // v12: the step's range, when it has one
+        const lo = BLO && !HOLD.has(s) ? r[s + BLO] : null, hi = BLO && !HOLD.has(s) ? r[s + BHI] : null;   // v12: the step's range, when it has one
         return lo == null || hi == null || (f(lo, d) == f(r[s], d) && f(hi, d) == f(r[s], d)) ? v
           : v + '</b><span style="opacity:.7">, ' + f(lo, d) + '–' + f(hi, d) + '</span><b>';
       };
@@ -523,9 +578,9 @@
     if (window.matchMedia) { const mq = matchMedia('(prefers-color-scheme: dark)'); if (mq.addEventListener) mq.addEventListener('change', () => draw()); }
 
     return {
-      set(recs) { R = recs; draw(); },
+      set(recs) { R = recs; prep(); draw(); },
       // Adds or replaces records by t (incremental loads, e.g. ?since=).
-      merge(recs) { if (!recs.length) return; const m = new Map(R.map((r) => [r.t, r])); recs.forEach((r) => m.set(r.t, r)); R = [...m.values()].sort((x, y) => x.t - y.t); draw(); },
+      merge(recs) { if (!recs.length) return; const m = new Map(R.map((r) => [r.t, r])); recs.forEach((r) => m.set(r.t, r)); R = [...m.values()].sort((x, y) => x.t - y.t); prep(); draw(); },
       records: () => R,
       draw,
       endIdx,

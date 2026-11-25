@@ -280,7 +280,7 @@ class OptecApp(App):
 
     def __init__(self, inst):
         self.inst = inst
-        self.history = History(["pos1", "pos2", "rot", "temp"])   # the same keys for both hubs: one page, one chart
+        self.history = History(["pos1", "pos2", "rot", "temp"], held=("pos1", "pos2", "rot"))   # the same keys for both hubs: one page, one chart
 
     def status(self):
         i = self.inst

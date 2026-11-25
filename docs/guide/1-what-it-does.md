@@ -17,7 +17,8 @@ its own network address. Alpaca Hub replaces those with one program:
   a chart, controls and settings. It works in any browser, also on a phone or tablet on your home network. Drag a
   tab to move it (or press Ctrl+Shift+← / → on it): the hub keeps that order, for every browser, and an unplugged
   device's tab comes back in its place. **Reset order** under the devices on Overview puts them back in the usual
-  order.
+  order. With two of a kind (two filter wheels, say) each keeps its tab name ("#2") for good; when one is gone for
+  good, **Renumber tabs** on its driver's card on the Overview closes the gap.
 - **It keeps a history.** Every device's readings are charted and saved to a file per day, so you can look back at a
   night's temperatures, dew heater power or focuser positions.
 

@@ -148,11 +148,28 @@ class RecorderTests(unittest.TestCase):
         self.assertEqual(self.new().record(self.insts[0], final=True), 1)
         self.assertEqual([r[1] for r in self.rows(name)[1:]], [str(T0 + 60 * i) for i in range(4)])
 
+    def test_leaves_the_device_name_beside_its_files(self):
+        self.insts[0].title = "NiteCrawler 3.5 NC #2"
+        self.dev.reply["rows"] = steps(T0, 5.0, 12.0) + steps(T0 + 60, 5.0, 12.0, n=1)
+        self.assertEqual(self.rec.record(self.insts[0]), 1)
+        self.assertEqual(R.read_title(self.folder()), "NiteCrawler 3.5 NC #2")
+        self.assertEqual(sorted(os.listdir(self.folder())), ["device.json", f"nitecrawler-history-{DAY}.csv"])
+        self.assertIsNone(R.read_title(os.path.join(self.dir, "nowhere")))
+
     def test_older_drivers_one_minute_rows(self):
         # a driver from before 10 s steps: one row a minute, no min/max -> its average is also its min and max
         self.dev.reply = {"keys": ["temp", "volt"], "rows": [[T0, 5.25, 12.0], [T0 + 60, 5.3, 12.1]]}
         self.assertEqual(self.rec.record(self.insts[0], final=True), 2)
         self.assertEqual(self.rows(f"nitecrawler-history-{DAY}.csv")[1][1:], [str(T0), "5.25", "5.25", "5.25", "12", "12", "12"])
+
+    def test_held_key_gets_the_minutes_last_reading(self):
+        from hub.recorder import minute_rows
+        keys = ["pos", "temp", "pos_min", "temp_min", "pos_max", "temp_max"]
+        rows = [[T0, 5600, 5.0, 5600, 5.0, 5600, 5.0], [T0 + 10, 5800, 6.0, 5600, 6.0, 5800, 6.0],
+                [T0 + 20, 5700, 7.0, 5700, 7.0, 5800, 7.0]]
+        self.assertEqual(minute_rows(keys, rows, ("pos",)), (["pos", "temp"], [[T0, 5700, 5600, 5800, 6.0, 5.0, 7.0]]))
+        self.assertEqual(minute_rows(keys, rows)[1][0][1], 5700.0)       # not held: the average (here the same)
+        self.assertEqual(minute_rows(keys, rows[:2], ("pos",))[1][0][1], 5800)
 
     def test_box_and_drivers_with_their_own_files_are_left_out(self):
         self.dev.reply["rows"] = steps(T0, 1.0, 2.0)

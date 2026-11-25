@@ -33,6 +33,8 @@ iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:var(
 .dev{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin:0 0 10px;display:grid;grid-template-columns:auto 1fr auto;gap:4px 12px;align-items:center;cursor:pointer}
 .dev:hover{border-color:var(--acc)}.dev h3{margin:0;font-size:16px}.dev .s{color:var(--mut);font-variant-numeric:tabular-nums}
 .dev .al{grid-column:2/-1;color:var(--mut);font-size:13px}
+.dev .rename{border:1px solid var(--line);background:none;color:var(--mut);border-radius:6px;padding:0 8px;font:inherit;font-size:12px;cursor:pointer;margin-left:6px;vertical-align:middle;opacity:.7}
+.dev:hover .rename{opacity:1}.dev .rename:hover{color:var(--fg);border-color:var(--acc)}
 .empty{color:var(--mut);padding:30px 0;text-align:center}
 .note{color:var(--mut);font-size:13px;margin-top:16px}
 .scan{display:flex;align-items:center;gap:12px;margin:0 0 12px}
@@ -45,6 +47,7 @@ iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:var(
 .drv .dot.off{background:var(--mut)}
 .drv button{border:1px solid var(--line);background:var(--bg);color:var(--fg);border-radius:8px;padding:4px 12px;font:inherit;font-size:13px;cursor:pointer;white-space:nowrap}
 .drv button:hover:not(:disabled){border-color:var(--acc)}.drv button:disabled{opacity:.6}
+.drv .renum button{margin-left:6px;padding:2px 10px}
 .drv pre{white-space:pre-wrap;font-size:12px;max-height:240px;overflow:auto;margin:6px 0 0}
 .ports{max-width:900px}.ports>summary{cursor:pointer;list-style-position:inside}.ports .s{font-weight:400;color:var(--mut);font-size:13px;margin-left:6px}
 .prt{display:grid;grid-template-columns:70px 1fr auto;gap:2px 12px;align-items:center;padding:7px 4px;border-bottom:1px solid var(--line);font-size:13px}
@@ -199,8 +202,9 @@ function render() {
   if (cur != 'overview' && !devs.some((d) => d.slug == cur)) cur = 'overview';
   const al = (slug) => hub.alpaca.filter((a) => a.slug == slug).map((a) => `${a.type} #${a.number}`).join(' · ');
   $('list').innerHTML = updatesLine() + (devs.length ? devs.map((d) => `<div class="dev" data-id="${d.slug}"><span class="dot ${d.up ? (d.summary.state == 'ok' ? '' : d.summary.state) : 'bad'}"></span>
-    <h3>${esc(d.title)}</h3><span class="s">${esc(d.port)}${d.missing ? ' · unplugged?' : ''}</span>
+    <h3>${esc(d.title)}${d.title != d.usual_title ? ` <span class="s">${esc(d.usual_title)}</span>` : ''} <button type="button" class="rename" data-slug="${esc(d.slug)}" data-named="${d.named ? 1 : ''}" title="Give this device a name of your own (shown on its tab, here and in Saved history)">Rename</button></h3><span class="s">${esc(d.port)}${d.missing ? ' · unplugged?' : ''}</span>
     <span class="al">${esc(d.up ? d.summary.text : 'not answering')}${al(d.slug) ? ' — Alpaca ' + esc(al(d.slug)) : ''}</span></div>`).join('')
+      + (hub.alpaca_numbers && !hub.alpaca_numbers.tidy ? `<div class="uset" style="margin:0 0 10px"><span class="s">${hub.alpaca_numbers.absent ? `Alpaca numbers are kept for ${hub.alpaca_numbers.absent} device${hub.alpaca_numbers.absent > 1 ? 's' : ''} not here` : 'The Alpaca numbers have gaps'}, so new devices get higher numbers.</span><button id="alpRenum"${hub.alpaca_numbers.in_use ? ' disabled title="An Alpaca program is connected"' : ''}>Renumber Alpaca numbers</button></div>` : '')
       + (hub.tab_order_saved ? '<div class="uset" style="margin:0 0 10px"><span class="s">The tabs are in the order you dragged them.</span><button id="tabReset">Reset order</button></div>' : '')
     : !(hub.drivers || []).length ? '<p class="empty">No drivers installed yet. Install the driver for each of your devices (AlpacaHub-&lt;device&gt;-Setup.exe): it appears below within seconds, and its device here on the next scan.</p>'
     : hub.last_scan && !(hub.ports || []).length ? '<p class="empty">No serial ports on this PC. Is the device plugged in by USB, and powered? It appears here within about 15 s.</p>'
@@ -212,6 +216,17 @@ function render() {
     + Object.entries(hub.refused || {}).map(([k, why]) => `<p class="note">⚠ Driver ${esc(k)} is not used: ${esc(why)}.</p>`).join('')
     + `<p class="note">${esc(hub.name)} ${esc(hub.version)}${hub.simulated ? ' · SIMULATED devices' : ''}. Alpaca programs find every device here at this one address.</p>`;
   document.querySelectorAll('.dev').forEach((e) => { e.onclick = () => show(e.dataset.id); });
+  document.querySelectorAll('.dev .rename').forEach((b) => { b.onclick = async (ev) => {
+    ev.stopPropagation();
+    const d = hub.devices.find((x) => x.slug == b.dataset.slug);
+    if (!d) return;
+    const name = prompt(`A name for ${d.usual_title} (up to 40 characters). Leave it empty for its usual name.`, b.dataset.named ? d.title : '');
+    if (name === null) return;
+    const r = await fetch('hub/devices/name', { method: 'POST', headers: { 'X-Hub-Page': '1', 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ slug: d.slug, name }).toString() }).catch(() => null);
+    if (!r || !r.ok) alert('Not renamed: ' + (r ? (await r.json().catch(() => ({}))).message || r.status : 'no answer from the hub'));
+    tick();
+  }; });
   document.querySelectorAll('.drv button').forEach((b) => { b.onclick = async () => {
     const p = (hub.drivers || []).find((x) => x.name == b.dataset.name);
     if (b.dataset.act == 'off' && p && p.devices.length && !confirm(`Turn off ${p.title}? Its devices (${p.devices.join(', ')}) disconnect until you turn it on again.`)) return;
@@ -220,7 +235,27 @@ function render() {
     await fetch('hub/drivers/' + encodeURIComponent(b.dataset.name) + '/' + b.dataset.act, { method: 'POST', headers: { 'X-Hub-Page': '1' } }).catch(() => null);
     tick();
   }; });
+  document.querySelectorAll('.renumBtn').forEach((b) => { b.onclick = async () => {
+    if (!confirm('Renumber the tabs? Units that are not plugged in now are forgotten, and the ones here are numbered 1, 2, 3 … in their current order. A device whose number changes starts again under its new tab (a few seconds). Alpaca numbers and settings stay as they are.')) return;
+    b.disabled = true;
+    const r = await fetch('hub/units/renumber', { method: 'POST', headers: { 'X-Hub-Page': '1', 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'key=' + encodeURIComponent(b.dataset.key) }).catch(() => null);
+    const j = r ? await r.json().catch(() => null) : null;
+    alert(j ? j.message : 'No answer from the hub.');
+    tick();
+  }; });
   document.querySelectorAll('.drv details').forEach((d) => { d.ontoggle = () => { if (d.open) openLogs.add(d.dataset.name); else openLogs.delete(d.dataset.name); }; });
+  const ar = $('alpRenum'); if (ar) ar.onclick = async () => {
+    const a = hub.alpaca_numbers, ch = a.changes || [];
+    if (!confirm('Renumber the Alpaca numbers?\n\n' + (ch.length ? 'These change:\n' + ch.join('\n') + '\n\n' : '')
+      + (a.absent ? `The numbers kept for ${a.absent} device${a.absent > 1 ? 's' : ''} not plugged in are forgotten: if one comes back it gets the next free number.\n\n` : '')
+      + 'Imaging programs that chose a device by its number (Focuser #1, say) must choose it again afterwards. Programs that know it by its UniqueID are not affected.')) return;
+    ar.disabled = true;
+    const r = await fetch('hub/alpaca/renumber', { method: 'POST', headers: { 'X-Hub-Page': '1' } }).catch(() => null);
+    const j = r ? await r.json().catch(() => null) : null;
+    alert(j ? j.message : 'No answer from the hub.');
+    tick();
+  };
   const tr = $('tabReset'); if (tr) tr.onclick = async () => {
     tr.disabled = true;
     await fetch('hub/tab-order', { method: 'POST', headers: { 'X-Hub-Page': '1', 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'reset=1' }).catch(() => null);
@@ -347,9 +382,13 @@ function driversList() {
     const btn = (act, label) => `<button data-name="${esc(p.name)}" data-act="${act}">${label}</button>`;
     const buttons = (p.update ? btn('switch', 'Switch now') : '') + (p.state == 'failed' ? btn('retry', 'Try again') : '')
       + (p.state == 'refused' ? '' : p.enabled ? btn('off', 'Turn off') : btn('on', 'Turn on'));
+    // Renumber tabs: units remembered but not plugged in, or numbers with gaps (hub.json "units", Hub.renumber_units)
+    const renum = (p.drivers || [p.name]).map((k) => [k, (hub.units || {})[k]]).filter(([, u]) => u && !u.tidy).map(([k, u]) =>
+      `<span class="why renum">${u.absent ? `${u.absent} unit${u.absent > 1 ? 's' : ''} no longer plugged in still ${u.absent > 1 ? 'keep their' : 'keeps its'} tab number${u.absent > 1 ? 's' : ''}` : 'The tab numbers have gaps'}, so new tabs get higher numbers (#3, #4 …). `
+      + `<button data-key="${esc(k)}" class="renumBtn"${u.in_use ? ' disabled title="An Alpaca program is connected to one of these devices"' : ''}>Renumber tabs</button></span>`).join('');
     const logs = p.last_lines && p.last_lines.length ? `<details data-name="${esc(p.name)}"${openLogs.has(p.name) ? ' open' : ''}><summary>Its last log lines</summary><pre>${esc(p.last_lines.join('\n'))}</pre></details>` : '';
     return `<div class="drv"><span class="dot ${dot}"></span><h3>${esc(p.title || p.name)} <span class="s">${esc(p.version)} · ${esc(p.source)}</span></h3>
-      <span class="bt">${buttons}</span><span class="st">${esc(parts.join(' · '))}</span>${why}${upd}${logs}</div>`;
+      <span class="bt">${buttons}</span><span class="st">${esc(parts.join(' · '))}</span>${why}${upd}${renum}${logs}</div>`;
   }).join('');
 }
 // The hub's version when this page loaded: a hub updated from here (or any other way) has a new page, so reload.

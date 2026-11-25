@@ -4,4 +4,4 @@ Device drivers (hub/drivers) recognise their hardware on the serial ports and ru
 at one address with one discovery responder and one status page, with a tab per device that is present.
 """
 NAME = "Alpaca Hub"
-VERSION = "0.4.1"
+VERSION = "0.4.2"

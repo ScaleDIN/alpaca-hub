@@ -133,6 +133,19 @@ class ListingTests(unittest.TestCase):
         self.assertEqual((usb[0].vid, usb[0].instance), (0x03C3, "SIM2"))
         self.assertIsNotNone(usb[0].sim)
 
+    def test_simulated_eaf_and_efw_together(self):
+        # 2026-11-24: each ZWO driver was handed every simulated ZWO unit and gave up on the other's.
+        lister, opener = simulated_ports("eaf,efw")
+        from hub.__main__ import all_drivers
+        hub = H.Hub(all_drivers(), config_dir=tempfile.mkdtemp(), bind="127.0.0.1", http_port=0,
+                    port_lister=lister, opener=opener, simulated=True)
+        try:
+            hub.scan_once()
+            self.assertEqual(sorted(hub.instances), ["zwoeaf", "zwoefw"])
+        finally:
+            for slug in list(hub.instances):
+                hub._remove(slug)
+
     def test_simulated_eaf_through_the_hub(self):
         lister, opener = simulated_ports("eaf,eaf5v")
         from hub.__main__ import all_drivers

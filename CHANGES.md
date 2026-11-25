@@ -4,6 +4,51 @@ What changed in each release of the Alpaca Hub and its drivers. Newest first. Ea
 `## <Hub | driver key> <version> (<date>)`: `packaging/build.py release` takes each new version's notes from here
 for the hub's update check, and refuses a release whose new versions have no entry.
 
+## Hub 0.4.2 (2026-11-25)
+- With two or more units of a kind (two filter wheels, two focusers), each keeps the tab name it got the first time:
+  "ZWO EFW" and "ZWO EFW #2" no longer swap depending on which one the hub finds first.
+- A unit that is gone keeps its number for when it comes back, so a new one gets the next free number. Renumber tabs
+  on the driver's card on the Overview forgets the units that aren't plugged in and numbers the rest 1, 2, 3 again
+  (not while an imaging program is connected to them). Alpaca numbers and settings don't change.
+- Renumber Alpaca numbers on the Overview does the same for the Alpaca numbers (Focuser #0, #1 …), with a warning
+  first: the devices here are numbered 0, 1, 2 per kind and numbers kept for devices that are gone are forgotten.
+  Imaging programs that chose a device by its number must choose it again.
+- Rename on a device's card on the Overview gives it a name of your own, shown on its tab, its card and in Saved
+  history; empty brings back its usual name. Without one, a name stored in the device itself is shown (the custom
+  ID set with ZWO's software, for the ZWO focuser and filter wheel).
+- Saved history lists each device by its name ("ZWO EFW #2", or the one you gave it), also once it's unplugged.
+- Charts draw positions and set levels (a focuser's position, a filter slot, a panel's brightness) as the values the
+  device really had, in steps, instead of averages it never had; the saved day files take each minute's last value
+  for them. The drivers use this from their next versions.
+
+## nitecrawler 1.0.4 (2026-11-25)
+- The chart draws the focuser, rotator and aux positions as the steps they really took, not averages. Needs Alpaca
+  Hub 0.4.2 or newer.
+
+## optec 1.0.4 (2026-11-25)
+- The chart draws the focusers' and rotator's positions as the steps they really took, not averages. Needs Alpaca
+  Hub 0.4.2 or newer.
+
+## wcover 1.0.5 (2026-11-25)
+- The chart draws the light's brightness and the heater level as the values they were set to, not averages (the
+  cover's angle, a sensor reading, is still averaged). Needs Alpaca Hub 0.4.2 or newer.
+
+## zwoeaf 0.1.3 (2026-11-25)
+- The focuser's custom ID (set with ZWO's software) is shown as its name when you haven't named it in the hub
+  (needs Alpaca Hub 0.4.2 to show).
+- The page says the custom ID, like maximum step and backlash, is set with ZWO's own drivers or tools.
+- Its chart draws the position as the steps it really took, not averages. Needs Alpaca Hub 0.4.2 or newer.
+
+## zwoefw 0.1.0 (2026-11-25)
+- New driver: the ZWO EFW filter wheel as an Alpaca FilterWheel, through ZWO's own EFW SDK (1.8.6). Tried on two
+  7-slot EFWs at once: ConformU's FilterWheel test passes on each.
+- Its page shows the slot and the filter in it, with a button per slot (locked while an imaging program is
+  connected), and the filters' names and focus offsets, kept in the hub for that wheel so every program sees the
+  same ones.
+- A turn the hub didn't start (another program with the wheel open) and a turn that doesn't finish are shown; the
+  SDK can't stop a turn.
+- Needs Alpaca Hub 0.4.2 or newer.
+
 ## zwoeaf 0.1.2 (2026-11-24)
 - The page says when the focuser was moved by another program (or the hand controller), and from where to where:
   the EAF can be opened by two programs at once, for example ZWO's own ASCOM driver while the hub holds it.

@@ -1,0 +1,35 @@
+<!-- ZWO EFW status page (device-web-ui kit). Built by hub/core/page.py, served by hub/devserver.py. -->
+<main class="cols top">
+<div class="pinwrap" id="pinwrap" aria-hidden="true"><div class="pinbar" id="pinbar"></div></div>
+<header><div><h1 id="name">ZWO EFW</h1><div class="mut" id="sub"></div></div>
+<div class="hright"><span id="link" class="pill" title="The filter wheel, through ZWO's EFW SDK on USB">…</span>
+<span id="client" class="pill" title="An ASCOM Alpaca client (your imaging program, for example) has connected this filter wheel">…</span>
+<span class="pill warn" id="upd" style="display:none;cursor:pointer" onclick="location.reload()" title="The hub runs a different version than this page came from">New version: reload</span>
+<button class="hbtn" id="night" title="Red night mode (keeps dark adaptation)">🌙</button></div></header>
+
+<div class="grid" id="tiles"></div>
+
+<section class="card" id="ctl"><h2>Controls</h2>
+<div class="lock" id="cLock" aria-live="polite"><span id="cLockTxt"></span><button type="button" id="cUnlock"></button></div>
+<div id="slots" role="group" aria-label="Turn to slot"></div>
+<p class="msg" id="cMsg" aria-live="polite"></p>
+<p class="note" style="margin:6px 0 0">The same wheel your Alpaca programs drive. The controls lock while an Alpaca program is connected. A turn can't be stopped once it has started: ZWO's SDK has no stop.</p></section>
+
+<section class="card" id="filters"><h2>Filters</h2>
+<form id="ff" autocomplete="off"><table><thead><tr><th class="mut">Slot</th><th class="mut">Name</th><th class="mut" title="Focuser steps to add for this filter, relative to the others (clients such as NINA use them)">Focus offset</th></tr></thead><tbody id="ffRows"></tbody></table>
+<div class="crow" style="margin-top:8px"><span></span><span class="seg"><button type="submit">Save</button><button type="button" id="ffReset" title="Show the saved names and offsets again">Undo changes</button></span></div></form>
+<p class="msg" id="fMsg" aria-live="polite"></p>
+<p class="note" style="margin:6px 0 0">Kept in the hub for this wheel (by its serial number), so every program sees the same names. Imaging programs read them when they connect.</p></section>
+
+<section class="card"><div class="bar"><span class="seg" id="ranges"></span><select id="panel" aria-label="Chart"></select><span class="sp"></span>
+<button id="zr" style="display:none" title="Show the whole range again (or double-click the chart)">Reset zoom</button><button id="brng" class="rng" title="Each step's lowest to highest reading, as a band">Range: auto</button><button id="bpng" title="Save the chart as shown as a PNG image">PNG</button><button id="bcsv" title="The samples in view as CSV">CSV</button></div>
+<div class="cw"><canvas id="ch"></canvas><div class="tip" id="tip"></div></div>
+<div class="lg" id="cust" style="display:none;margin:6px 0 0"></div><div class="lg" id="lg"></div><div class="mut" id="chNote" style="font-size:12px;margin-top:4px"></div>
+<p class="note" style="margin:6px 0 0">The slot over time: it changes when a turn ends. 1 s detail for the last 10 minutes, 10-second averages for 24 hours, kept while the hub runs.</p></section>
+
+<div id="side">
+<details class="card" id="d-dev" open><summary>Filter wheel</summary>
+<table class="kv" id="dt"></table>
+<p class="note" style="margin:6px 0 0">One-way rotation, calibration and the wheel's custom ID (the alias in its model name) are stored in the wheel and set with ZWO's own drivers or tools: the hub only reads them.</p></details>
+</div>
+</main>
